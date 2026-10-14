@@ -22,18 +22,18 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: ver
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then v="${{ github.event.inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "VERSION=$v" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: 前端
@@ -49,7 +49,7 @@ jobs:
             ARCH=$arch VERSION=$VERSION /tmp/nfpm/nfpm package -f deploy/nfpm.yaml -p deb -t dist/
           done
           ls -la dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-linux
           path: dist/
@@ -59,8 +59,8 @@ jobs:
     needs: build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist-linux
           path: dist
@@ -71,7 +71,7 @@ jobs:
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.build.outputs.version }}" installer\rsagent.iss
           Get-ChildItem dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-installer
           path: dist/rsagent-setup-*.exe
@@ -81,15 +81,15 @@ jobs:
     needs: [build, installer]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-linux
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-installer
           path: dist
@@ -98,7 +98,7 @@ jobs:
           V=${{ needs.build.outputs.version }}
           go run ./tools/mkmanifest -version "$V" -dir dist -base "https://github.com/${{ github.repository }}/releases/download/v$V"
           cat dist/manifest.json
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.build.outputs.version }}
           name: v${{ needs.build.outputs.version }}
