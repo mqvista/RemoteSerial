@@ -43,11 +43,17 @@ export interface BridgeStatus {
   port: string
   resolvedPort: string
   tcpPort: number
+  localPort?: number
   mode: string
   baud: number
+  active: string
+  paramsBy: string
+  dtr: boolean
+  rts: boolean
   enabled: boolean
   state: string
   deviceOpen: boolean
+  viewers: number
   client?: string
   clientSince?: string
   fromDevice: number
@@ -72,6 +78,7 @@ export interface BridgeConfig {
   stopBits: number
   mode: string
   tcpPort: number
+  localPort?: number
   clientPolicy: string
   idleTimeoutSec: number
   enabled: boolean

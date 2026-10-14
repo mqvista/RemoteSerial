@@ -53,7 +53,8 @@ type Bridge struct {
 	StopBits       float64    `json:"stopBits"` // 1 | 1.5 | 2
 	Mode           string     `json:"mode"`     // raw | rfc2217
 	TCPPort        int        `json:"tcpPort"`
-	ClientPolicy   string     `json:"clientPolicy"` // reject | replace
+	LocalPort      int        `json:"localPort,omitempty"` // 可选：同时在 127.0.0.1 监听，供远端本机工具使用
+	ClientPolicy   string     `json:"clientPolicy"`        // reject | replace
 	IdleTimeoutSec int        `json:"idleTimeoutSec"`
 	Enabled        bool       `json:"enabled"`
 }
@@ -169,6 +170,7 @@ func (c *Config) Validate() error {
 
 	ids := map[string]bool{}
 	ports := map[int]string{}
+	localPorts := map[int]string{}
 	for i, b := range c.Bridges {
 		if b.ID == "" {
 			return fmt.Errorf("bridges[%d].id 不能为空", i)
@@ -213,6 +215,15 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("bridge %q 与 %q 的 tcpPort 重复: %d", b.ID, other, b.TCPPort)
 		}
 		ports[b.TCPPort] = b.ID
+		if b.LocalPort < 0 || b.LocalPort > 65535 {
+			return fmt.Errorf("bridge %q localPort 越界: %d", b.ID, b.LocalPort)
+		}
+		if b.LocalPort > 0 {
+			if other, dup := localPorts[b.LocalPort]; dup {
+				return fmt.Errorf("bridge %q 与 %q 的 localPort 重复: %d", b.ID, other, b.LocalPort)
+			}
+			localPorts[b.LocalPort] = b.ID
+		}
 		if b.IdleTimeoutSec < 0 {
 			return fmt.Errorf("bridge %q idleTimeoutSec 不能为负", b.ID)
 		}

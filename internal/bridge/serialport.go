@@ -10,6 +10,7 @@ import (
 	"go.bug.st/serial/enumerator"
 
 	"rsagent/internal/config"
+	"rsagent/internal/rfc2217"
 )
 
 // ErrDeviceNotFound 表示按 USB 标识没有匹配到任何串口。
@@ -149,24 +150,30 @@ func resolvePort(cfg config.Bridge) (string, error) {
 	}
 }
 
-// serialMode 把配置转换为串口库的参数。
-func serialMode(cfg config.Bridge) (*serial.Mode, error) {
-	m := &serial.Mode{BaudRate: cfg.Baud, DataBits: cfg.DataBits}
-	switch strings.ToUpper(cfg.Parity) {
-	case "N", "":
+// serialMode 把参数转换为串口库的 Mode。
+func serialMode(mode rfc2217.Mode) (*serial.Mode, error) {
+	if mode.Baud <= 0 {
+		return nil, fmt.Errorf("波特率非法: %d", mode.Baud)
+	}
+	m := &serial.Mode{BaudRate: mode.Baud, DataBits: mode.DataBits}
+	if m.DataBits == 0 {
+		m.DataBits = 8
+	}
+	switch mode.Parity {
+	case 'N', 0:
 		m.Parity = serial.NoParity
-	case "E":
+	case 'E':
 		m.Parity = serial.EvenParity
-	case "O":
+	case 'O':
 		m.Parity = serial.OddParity
-	case "M":
+	case 'M':
 		m.Parity = serial.MarkParity
-	case "S":
+	case 'S':
 		m.Parity = serial.SpaceParity
 	default:
-		return nil, fmt.Errorf("校验位非法: %q", cfg.Parity)
+		return nil, fmt.Errorf("校验位非法: %q", string(mode.Parity))
 	}
-	switch cfg.StopBits {
+	switch mode.StopBits {
 	case 0, 1:
 		m.StopBits = serial.OneStopBit
 	case 1.5:
@@ -174,7 +181,7 @@ func serialMode(cfg config.Bridge) (*serial.Mode, error) {
 	case 2:
 		m.StopBits = serial.TwoStopBits
 	default:
-		return nil, fmt.Errorf("停止位非法: %v", cfg.StopBits)
+		return nil, fmt.Errorf("停止位非法: %v", mode.StopBits)
 	}
 	return m, nil
 }

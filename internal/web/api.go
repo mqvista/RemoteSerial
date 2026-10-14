@@ -41,6 +41,7 @@ func (s *Server) routes() {
 	api.HandleFunc("POST /api/deploy/{action}", s.handleDeployAction)
 
 	api.HandleFunc("GET /ws/events", s.handleEvents)
+	api.HandleFunc("GET /ws/term/{id}", s.handleTerminal)
 
 	s.mux.Handle("/api/", s.authMiddleware(api))
 	s.mux.Handle("/ws/", s.authMiddleware(api))

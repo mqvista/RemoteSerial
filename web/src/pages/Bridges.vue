@@ -80,8 +80,8 @@ const stopOptions = [
   { label: '2', value: 2 },
 ]
 const modeOptions = [
-  { label: '裸 TCP', value: 'raw' },
-  { label: 'RFC2217（第三期）', value: 'rfc2217', disabled: true },
+  { label: '裸 TCP：任何 TCP 客户端可连，参数固定', value: 'raw' },
+  { label: 'RFC2217：客户端可改波特率、拉 DTR/RTS', value: 'rfc2217' },
 ]
 const policyOptions = [
   { label: '新连接替换旧连接', value: 'replace' },
@@ -126,8 +126,9 @@ function openNew() {
     dataBits: 8,
     parity: 'N',
     stopBits: 1,
-    mode: 'raw',
+    mode: 'rfc2217',
     tcpPort: nextTCPPort(),
+    localPort: 0,
     clientPolicy: 'replace',
     idleTimeoutSec: 0,
     enabled: true,
@@ -217,8 +218,33 @@ const columns: DataTableColumns<BridgeConfig> = [
       return h('span', {}, [name, c.match ? h(NText, { depth: 3, style: 'margin-left:6px;font-size:12px' }, { default: () => 'USB 匹配' }) : null])
     },
   },
-  { title: '参数', key: 'params', render: (c) => `${c.baud} ${c.dataBits}${c.parity}${c.stopBits}` },
-  { title: 'TCP 端口', key: 'tcpPort', width: 90 },
+  {
+    title: '参数',
+    key: 'params',
+    render: (c) => {
+      const s = statusById.value[c.id]
+      const cfg = `${c.baud} ${c.dataBits}${c.parity}${c.stopBits}`
+      if (!s || s.paramsBy !== 'client') return cfg
+      return h('span', {}, [s.active, h(NTag, { size: 'tiny', type: 'info', style: 'margin-left:6px' }, { default: () => '客户端设置' })])
+    },
+  },
+  {
+    title: '控制线',
+    key: 'lines',
+    width: 110,
+    render: (c) => {
+      const s = statusById.value[c.id]
+      if (!s?.deviceOpen) return '-'
+      return h(NSpace, { size: 2 }, {
+        default: () => [
+          h(NTag, { size: 'tiny', type: s.dtr ? 'success' : 'default' }, { default: () => 'DTR' }),
+          h(NTag, { size: 'tiny', type: s.rts ? 'success' : 'default' }, { default: () => 'RTS' }),
+        ],
+      })
+    },
+  },
+  { title: '模式', key: 'mode', width: 90, render: (c) => (c.mode === 'rfc2217' ? 'RFC2217' : '裸 TCP') },
+  { title: 'TCP 端口', key: 'tcpPort', width: 110, render: (c) => (c.localPort ? `${c.tcpPort} / 本机 ${c.localPort}` : String(c.tcpPort)) },
   { title: '状态', key: 'state', width: 120, render: (c) => stateTag(statusById.value[c.id]) },
   {
     title: '客户端',
@@ -273,7 +299,8 @@ onMounted(() => {
       <NDataTable :columns="columns" :data="configs" :row-key="(r: BridgeConfig) => r.id" size="small" :bordered="false" />
       <template v-if="configs.length">
         <NText depth="3" style="display: block; margin-top: 12px; font-size: 12px">
-          本地连接示例：<code>nc {{ status?.tailscale.ip || '100.x.y.z' }} {{ configs[0].tcpPort }}</code>，或在串口工具里用 TCP 客户端模式连接该地址。
+          本地连接示例：裸 TCP 用 <code>nc {{ status?.tailscale.ip || '100.x.y.z' }} {{ configs[0].tcpPort }}</code> 或串口工具的 TCP 客户端模式；RFC2217 用
+          <code>rfc2217://{{ status?.tailscale.ip || '100.x.y.z' }}:{{ configs[0].tcpPort }}</code>（pyserial、esptool、PlatformIO），需要 COMx 的工具用 com0com + hub4com 映射。
         </NText>
       </template>
     </NCard>
@@ -327,6 +354,11 @@ onMounted(() => {
         </NFormItem>
         <NFormItem label="TCP 端口">
           <NInputNumber v-model:value="editing.tcpPort" :min="1" :max="65535" />
+          <NText depth="3" style="margin-left: 12px; font-size: 12px">tailnet 内访问 节点IP:端口</NText>
+        </NFormItem>
+        <NFormItem label="本机端口">
+          <NInputNumber v-model:value="editing.localPort" :min="0" :max="65535" placeholder="0 为不监听" />
+          <NText depth="3" style="margin-left: 12px; font-size: 12px">可选，同时在 127.0.0.1 监听，供远端本机的串口工具使用</NText>
         </NFormItem>
         <NFormItem label="客户端策略">
           <NSelect v-model:value="editing.clientPolicy" :options="policyOptions" />

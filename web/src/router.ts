@@ -4,6 +4,7 @@ import Overview from './pages/Overview.vue'
 import Tailscale from './pages/Tailscale.vue'
 import Bridges from './pages/Bridges.vue'
 import Routes from './pages/Routes.vue'
+import TerminalPage from './pages/Terminal.vue'
 import Logs from './pages/Logs.vue'
 import Deploy from './pages/Deploy.vue'
 import Settings from './pages/Settings.vue'
@@ -15,7 +16,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/tailscale', name: 'tailscale', component: Tailscale, meta: { title: 'Tailscale' } },
   { path: '/bridges', name: 'bridges', component: Bridges, meta: { title: '串口桥接' } },
   { path: '/routes', name: 'routes', component: Routes, meta: { title: '子网路由' } },
-  { path: '/terminal', name: 'terminal', component: Placeholder, meta: { title: '终端', phase: 3 } },
+  { path: '/terminal', name: 'terminal', component: TerminalPage, meta: { title: '终端' } },
   { path: '/logs', name: 'logs', component: Logs, meta: { title: '日志' } },
   { path: '/deploy', name: 'deploy', component: Deploy, meta: { title: '部署' } },
   { path: '/settings', name: 'settings', component: Settings, meta: { title: '设置' } },
