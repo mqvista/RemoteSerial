@@ -12,7 +12,9 @@ export interface TailscaleSnapshot {
   loginName?: string
   tags?: string[]
   keyExpiry?: string
+  advertiseTags?: string[]
   homeRelay?: string
+  authURL?: string
   message?: string
   since: string
 }
@@ -189,7 +191,7 @@ export interface Config {
   version: number
   listen: string
   logLevel: string
-  tailscale: { hostname: string; controlURL: string; udpPort: number; webPort: number; advertiseRoutes: string[] }
+  tailscale: { hostname: string; controlURL: string; udpPort: number; webPort: number; advertiseRoutes: string[]; tags?: string[] }
   access: { allowedLogins: string[] }
   update: { url: string; autoCheck: boolean }
   bridges: BridgeConfig[]
@@ -236,6 +238,7 @@ export interface SettingsUpdate {
   udpPort?: number
   hostname?: string
   controlURL?: string
+  tags?: string[]
   updateURL?: string
   updateAutoCheck?: boolean
 }

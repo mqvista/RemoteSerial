@@ -77,6 +77,10 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 		cfg.Tailscale.ControlURL = strings.TrimSpace(o.ControlURL)
 		changed = true
 	}
+	if len(o.Tags) > 0 && strings.Join(o.Tags, ",") != strings.Join(cfg.Tailscale.Tags, ",") {
+		cfg.Tailscale.Tags = o.Tags
+		changed = true
+	}
 	listen := cfg.Listen
 	if o.Listen != "" {
 		listen = o.Listen
@@ -97,6 +101,7 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 		ControlURL:      cfg.Tailscale.ControlURL,
 		UDPPort:         uint16(cfg.Tailscale.UDPPort),
 		AdvertiseRoutes: cfg.Tailscale.AdvertiseRoutes,
+		Tags:            cfg.Tailscale.Tags,
 	}, o.Log.With("mod", "tsnode"), tsnode.Hooks{})
 	if err := node.Start(ctx, o.AuthKey, o.Tags); err != nil {
 		return ProvisionResult{}, err

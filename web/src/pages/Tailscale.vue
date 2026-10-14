@@ -204,6 +204,7 @@ const peerColumns: DataTableColumns<Peer> = [
 onMounted(() => {
   form.value.hostname = snap.value?.hostname ?? ''
   form.value.controlURL = snap.value?.controlURL ?? ''
+  form.value.tags = (snap.value?.advertiseTags ?? []).join(', ')
   loadPeers()
   peerTimer = window.setInterval(loadPeers, 5000)
 })
@@ -218,7 +219,13 @@ onUnmounted(() => {
       <template #header-extra>
         <NTag :type="stateType">{{ stateLabel }}</NTag>
       </template>
-      <NAlert v-if="snap?.message" :type="snap.state === 'Running' ? 'info' : 'warning'" style="margin-bottom: 12px">{{ snap.message }}</NAlert>
+      <NAlert v-if="snap?.message" :type="snap.state === 'Running' ? 'info' : 'warning'" style="margin-bottom: 12px">
+        {{ snap.message }}
+        <template v-if="snap.authURL">
+          <br />
+          认证链接：<a :href="snap.authURL" target="_blank" rel="noopener">{{ snap.authURL }}</a>（需要用 tag 的 owner 账号登录；也可以在下方用 auth key 重新登录）
+        </template>
+      </NAlert>
       <NDescriptions :column="2" label-placement="left" bordered size="small">
         <NDescriptionsItem label="节点名">{{ snap?.hostname }}</NDescriptionsItem>
         <NDescriptionsItem label="MagicDNS">{{ snap?.dnsName || '-' }}</NDescriptionsItem>
@@ -268,6 +275,9 @@ onUnmounted(() => {
         </NFormItem>
         <NFormItem label="Tag">
           <NInput v-model:value="form.tags" placeholder="如 tag:serial-agent，多个用逗号分隔；普通 auth key 可留空" />
+        </NFormItem>
+        <NFormItem v-if="snap?.hasState" label=" ">
+          <NText depth="3" style="font-size: 12px">节点已有登录状态，用 key 重新登录会保留节点身份；"退出并重置"才会生成新节点。</NText>
         </NFormItem>
         <NFormItem label=" ">
           <NButton type="primary" :loading="busy" @click="login">登录</NButton>

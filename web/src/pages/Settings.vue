@@ -17,6 +17,7 @@ const form = ref({
   udpPort: 41641,
   hostname: '',
   controlURL: '',
+  tags: [] as string[],
   updateURL: '',
   updateAutoCheck: true,
 })
@@ -47,6 +48,7 @@ async function load() {
       udpPort: cfg.value.tailscale.udpPort,
       hostname: cfg.value.tailscale.hostname,
       controlURL: cfg.value.tailscale.controlURL,
+      tags: [...(cfg.value.tailscale.tags ?? [])],
       updateURL: cfg.value.update?.url ?? '',
       updateAutoCheck: cfg.value.update?.autoCheck ?? true,
     }
@@ -66,6 +68,7 @@ async function save() {
       udpPort: form.value.udpPort,
       hostname: nodeStopped.value ? form.value.hostname : undefined,
       controlURL: nodeStopped.value ? form.value.controlURL : undefined,
+      tags: nodeStopped.value ? form.value.tags : undefined,
       updateURL: form.value.updateURL,
       updateAutoCheck: form.value.updateAutoCheck,
     })
@@ -127,6 +130,12 @@ onMounted(load)
         </NFormItem>
         <NFormItem label="控制服务器">
           <NInput v-model:value="form.controlURL" :disabled="!nodeStopped" placeholder="留空用官方；Headscale 填 https://..." style="width: 360px" />
+        </NFormItem>
+        <NFormItem label="Tag">
+          <NSpace vertical style="width: 100%">
+            <NDynamicTags v-model:value="form.tags" :disabled="!nodeStopped" />
+            <NText depth="3" style="font-size: 12px">登录时申请的 tag，每次启动都会带上。改动后需要用 auth key 重新登录才生效。</NText>
+          </NSpace>
         </NFormItem>
       </NForm>
     </NCard>

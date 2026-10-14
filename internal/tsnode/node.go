@@ -45,24 +45,27 @@ type Config struct {
 	ControlURL      string
 	UDPPort         uint16
 	AdvertiseRoutes []string
+	Tags            []string // 申请的 tag，每次启动都通过 AdvertiseTags 带上
 }
 
 // Snapshot 是某一时刻的节点状态，可直接序列化给界面。
 type Snapshot struct {
-	State      State      `json:"state"`
-	Hostname   string     `json:"hostname"`
-	ControlURL string     `json:"controlURL"`
-	HasState   bool       `json:"hasState"`
-	IP         string     `json:"ip,omitempty"`
-	IPv6       string     `json:"ipv6,omitempty"`
-	DNSName    string     `json:"dnsName,omitempty"`
-	Tailnet    string     `json:"tailnet,omitempty"`
-	LoginName  string     `json:"loginName,omitempty"`
-	Tags       []string   `json:"tags,omitempty"`
-	KeyExpiry  *time.Time `json:"keyExpiry,omitempty"`
-	HomeRelay  string     `json:"homeRelay,omitempty"` // 当前首选 DERP 区域代码
-	Message    string     `json:"message,omitempty"`   // 最近一次错误或提示
-	Since      time.Time  `json:"since"`               // 进入当前状态的时间
+	State         State      `json:"state"`
+	Hostname      string     `json:"hostname"`
+	ControlURL    string     `json:"controlURL"`
+	HasState      bool       `json:"hasState"`
+	IP            string     `json:"ip,omitempty"`
+	IPv6          string     `json:"ipv6,omitempty"`
+	DNSName       string     `json:"dnsName,omitempty"`
+	Tailnet       string     `json:"tailnet,omitempty"`
+	LoginName     string     `json:"loginName,omitempty"`
+	Tags          []string   `json:"tags,omitempty"`
+	KeyExpiry     *time.Time `json:"keyExpiry,omitempty"`
+	AdvertiseTags []string   `json:"advertiseTags,omitempty"` // 配置中申请的 tag
+	HomeRelay     string     `json:"homeRelay,omitempty"`     // 当前首选 DERP 区域代码
+	AuthURL       string     `json:"authURL,omitempty"`       // 控制服务器要求交互式认证时给出的链接
+	Message       string     `json:"message,omitempty"`       // 最近一次错误或提示
+	Since         time.Time  `json:"since"`                   // 进入当前状态的时间
 }
 
 // Peer 是 tailnet 中一个对端的摘要，用于诊断直连还是中转。
@@ -112,11 +115,12 @@ type Node struct {
 func New(cfg Config, log *slog.Logger, hooks Hooks) *Node {
 	n := &Node{cfg: cfg, log: log, hooks: hooks}
 	n.snap = Snapshot{
-		State:      StateNotConfigured,
-		Hostname:   cfg.Hostname,
-		ControlURL: cfg.ControlURL,
-		HasState:   n.HasState(),
-		Since:      time.Now(),
+		State:         StateNotConfigured,
+		Hostname:      cfg.Hostname,
+		ControlURL:    cfg.ControlURL,
+		AdvertiseTags: append([]string(nil), cfg.Tags...),
+		HasState:      n.HasState(),
+		Since:         time.Now(),
 	}
 	if n.snap.HasState {
 		n.snap.State = StateStopped
@@ -144,6 +148,18 @@ func (n *Node) UpdateConfig(hostname, controlURL string) error {
 	}
 	n.cfg.ControlURL = controlURL
 	n.snap.ControlURL = controlURL
+	return nil
+}
+
+// SetTags 更新配置中的 tag，仅在节点未运行时允许；运行中改 tag 需要重新登录。
+func (n *Node) SetTags(tags []string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.srv != nil {
+		return errors.New("节点运行中，tag 需在登录时指定")
+	}
+	n.cfg.Tags = append([]string(nil), tags...)
+	n.snap.AdvertiseTags = append([]string(nil), tags...)
 	return nil
 }
 
@@ -183,16 +199,33 @@ func (n *Node) Running() bool {
 //
 // tags 是入网时申请的 tag（如 tag:serial-agent）。authKey 是 OAuth client secret
 // （tskey-client-…）时必须给 tags，tsnet 会用它向 API 换取一次性 auth key；普通
-// auth key 可不给，由 key 自带的 tag 决定。
+// auth key 可不给，由 key 自带的 tag 决定。tags 为空时沿用配置里保存的 tag：
+// tsnet 每次启动都用 AdvertiseTags 覆盖 prefs，不带上的话控制服务器会认为节点
+// 要摘掉 tag 并要求重新认证。
+//
+// 节点已在运行但处于 NeedsLogin、NeedsMachineAuth 或 Error，且给了 authKey 时，
+// 先停止再用 key 重新登录，保留节点身份。
 func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 	n.mu.Lock()
 	if n.srv != nil {
+		st := n.snap.State
 		n.mu.Unlock()
-		return errors.New("节点已在运行")
+		if authKey == "" || (st != StateNeedsLogin && st != StateNeedsMachineAuth && st != StateError) {
+			return errors.New("节点已在运行")
+		}
+		n.log.Info("节点处于需要登录的状态，先停止再用新 key 登录", "state", st)
+		_ = n.Stop()
+		n.mu.Lock()
 	}
 	if authKey == "" && !n.HasState() {
 		n.mu.Unlock()
 		return errors.New("尚未登录，需要 auth key")
+	}
+	if len(tags) > 0 {
+		n.cfg.Tags = append([]string(nil), tags...)
+		n.snap.AdvertiseTags = append([]string(nil), tags...)
+	} else {
+		tags = n.cfg.Tags
 	}
 	if strings.HasPrefix(authKey, "tskey-client-") && len(tags) == 0 {
 		n.mu.Unlock()
@@ -217,7 +250,7 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 		Logf:       n.tsLogf(slog.LevelDebug),
 		UserLogf:   n.tsLogf(slog.LevelInfo),
 	}
-	if authKey != "" && len(tags) > 0 {
+	if len(tags) > 0 {
 		srv.AdvertiseTags = append([]string(nil), tags...)
 	}
 	n.srv = srv
@@ -280,6 +313,7 @@ func (n *Node) Stop() error {
 		n.hooks.OnStopped()
 	}
 	n.mu.Lock()
+	n.snap.AuthURL = ""
 	if n.HasState() {
 		n.setStateLocked(StateStopped, "")
 	} else {
@@ -448,6 +482,17 @@ func (n *Node) watch(ctx context.Context, lc *local.Client) {
 				n.log.Warn("tailscale 后端报告错误", "msg", *nt.ErrMessage)
 				n.emit()
 			}
+			if nt.BrowseToURL != nil && *nt.BrowseToURL != "" {
+				// 控制服务器要求交互式认证：密钥过期、被撤销或 tag 变化。auth key 无法自动续期时
+				// 只能用 key 重新登录，或由管理员在浏览器打开此链接。
+				n.mu.Lock()
+				n.snap.AuthURL = *nt.BrowseToURL
+				n.setStateLocked(StateNeedsLogin, "控制服务器要求重新认证（密钥过期、被撤销或 tag 变化）：用 auth key 重新登录，或在浏览器打开认证链接")
+				n.mu.Unlock()
+				n.log.Warn("控制服务器要求重新认证", "authURL", *nt.BrowseToURL)
+				n.emit()
+				continue
+			}
 			if nt.State != nil {
 				n.applyState(ctx, lc, *nt.State)
 			}
@@ -484,6 +529,14 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	if s == StateNeedsLogin && prev == StateStarting && n.snap.Message == "" {
 		n.mu.Unlock()
 		return
+	}
+	if s == StateNeedsLogin && n.snap.AuthURL != "" {
+		// 已经由 BrowseToURL 设置了更准确的提示，保留
+		n.mu.Unlock()
+		return
+	}
+	if s == StateRunning {
+		n.snap.AuthURL = ""
 	}
 	n.setStateLocked(s, msg)
 	n.mu.Unlock()

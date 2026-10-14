@@ -40,6 +40,12 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 		tags = append(tags, t)
 	}
 
+	// 节点在运行但卡在需要登录的状态：先停掉，让下面的改名、改 tag 和重新登录都能进行。
+	if st := s.deps.Node.Snapshot().State; req.AuthKey != "" && (st == "NeedsLogin" || st == "NeedsMachineAuth" || st == "Error") {
+		if err := s.deps.Node.Stop(); err != nil {
+			s.deps.Log.Warn("重新登录前停止节点失败", "err", err)
+		}
+	}
 	if req.Hostname != "" || req.ControlURL != s.deps.Config.Tailscale.ControlURL {
 		if err := s.deps.Node.UpdateConfig(req.Hostname, req.ControlURL); err != nil {
 			writeError(w, http.StatusConflict, err.Error())
@@ -57,6 +63,12 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := s.deps.Node.Start(r.Context(), req.AuthKey, tags); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
+	}
+	if len(tags) > 0 && strings.Join(tags, ",") != strings.Join(s.deps.Config.Tailscale.Tags, ",") {
+		s.deps.Config.Tailscale.Tags = tags
+		if err := s.deps.Config.Save(s.deps.Paths.ConfigFile); err != nil {
+			s.deps.Log.Error("保存配置失败", "err", err)
+		}
 	}
 	s.deps.Log.Info("已发起 Tailscale 登录", "hostname", s.deps.Config.Tailscale.Hostname, "tags", tags, "oauth", strings.HasPrefix(req.AuthKey, "tskey-client-"), "by", requesterLabel(r))
 	writeJSON(w, http.StatusAccepted, s.deps.Node.Snapshot())

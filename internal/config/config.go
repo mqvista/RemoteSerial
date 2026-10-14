@@ -44,6 +44,7 @@ type Tailscale struct {
 	UDPPort         int      `json:"udpPort"`         // WireGuard 监听端口，固定便于加防火墙规则
 	WebPort         int      `json:"webPort"`         // tailnet 侧管理界面端口
 	AdvertiseRoutes []string `json:"advertiseRoutes"` // 子网路由 CIDR 列表
+	Tags            []string `json:"tags"`            // 入网申请的 tag；每次启动都要带上，否则控制服务器会要求重新认证
 }
 
 // Access 是 tailnet 侧访问控制。
@@ -93,6 +94,7 @@ func Default() *Config {
 			UDPPort:         41641,
 			WebPort:         80,
 			AdvertiseRoutes: []string{},
+			Tags:            []string{},
 		},
 		Access:  Access{AllowedLogins: []string{}},
 		Update:  Update{URL: DefaultUpdateURL, AutoCheck: true},
@@ -179,6 +181,11 @@ func (c *Config) Validate() error {
 	for _, r := range c.Tailscale.AdvertiseRoutes {
 		if _, _, err := net.ParseCIDR(r); err != nil {
 			return fmt.Errorf("advertiseRoutes 含非法 CIDR %q", r)
+		}
+	}
+	for _, t := range c.Tailscale.Tags {
+		if !strings.HasPrefix(t, "tag:") || len(t) <= 4 {
+			return fmt.Errorf("tailscale.tags 含非法 tag %q，必须形如 tag:name", t)
 		}
 	}
 	if u := c.Update.URL; u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {

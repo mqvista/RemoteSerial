@@ -17,6 +17,7 @@ type settingsUpdate struct {
 	UDPPort       *int      `json:"udpPort"`
 	Hostname      *string   `json:"hostname"`
 	ControlURL    *string   `json:"controlURL"`
+	Tags          *[]string `json:"tags"`
 	UpdateURL     *string   `json:"updateURL"`
 	UpdateAuto    *bool     `json:"updateAutoCheck"`
 }
@@ -87,6 +88,25 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if u.Tags != nil {
+		clean := make([]string, 0, len(*u.Tags))
+		for _, t := range *u.Tags {
+			if t = strings.TrimSpace(t); t != "" {
+				clean = append(clean, t)
+			}
+		}
+		if strings.Join(clean, ",") != strings.Join(cfg.Tailscale.Tags, ",") {
+			if s.deps.Node != nil {
+				if err := s.deps.Node.SetTags(clean); err != nil {
+					*cfg = backup
+					writeError(w, http.StatusConflict, err.Error())
+					return
+				}
+			}
+			cfg.Tailscale.Tags = clean
+			resp.Applied = append(resp.Applied, "tags")
+		}
+	}
 	updateChanged := false
 	if u.UpdateURL != nil && strings.TrimSpace(*u.UpdateURL) != cfg.Update.URL {
 		cfg.Update.URL = strings.TrimSpace(*u.UpdateURL)

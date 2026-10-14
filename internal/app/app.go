@@ -91,6 +91,7 @@ func Run(ctx context.Context, o Options) error {
 		ControlURL:      cfg.Tailscale.ControlURL,
 		UDPPort:         uint16(cfg.Tailscale.UDPPort),
 		AdvertiseRoutes: cfg.Tailscale.AdvertiseRoutes,
+		Tags:            cfg.Tailscale.Tags,
 	}, lg.Logger.With("mod", "tsnode"), tsnode.Hooks{
 		OnStarted: func(n *tsnode.Node) {
 			addr := fmt.Sprintf(":%d", cfg.Tailscale.WebPort)
@@ -151,6 +152,11 @@ func Run(ctx context.Context, o Options) error {
 		lg.Info("用环境变量 RSAGENT_AUTH_KEY 自动登录", "tags", tags)
 		if err := node.Start(ctx, key, tags); err != nil {
 			lg.Error("自动登录失败", "err", err)
+		} else if len(tags) > 0 {
+			cfg.Tailscale.Tags = tags
+			if err := cfg.Save(paths.ConfigFile); err != nil {
+				lg.Error("保存配置失败", "err", err)
+			}
 		}
 	} else {
 		lg.Info("节点未登录，等待在界面输入 auth key")
