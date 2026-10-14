@@ -5,22 +5,25 @@ import { api } from '../api'
 import type { DeployAction, DeployStatus } from '../api'
 import { useStatus } from '../status'
 
-const { status } = useStatus()
+const { status, connected } = useStatus()
 const message = useMessage()
 
 const st = ref<DeployStatus | null>(null)
 const busy = ref<string | null>(null)
 const lastMessage = ref('')
+// core 正在服务与单进程之间切换：期间不刷新，也不报连接错误
+const switching = ref(false)
+const switchingActions = new Set(['service-install', 'service-start', 'service-stop', 'service-remove'])
 
 const isWindows = computed(() => st.value?.os === 'windows')
 const isLocal = computed(() => status.value?.source === 'local')
 const needsUAC = computed(() => !!st.value && !st.value.elevated)
 
-async function load() {
+async function load(quiet = false) {
   try {
     st.value = await api.deployStatus()
   } catch (e) {
-    message.error(String(e))
+    if (!quiet && !switching.value) message.error(String(e))
   }
 }
 
@@ -33,21 +36,44 @@ async function run(action: DeployAction) {
     if (r.result.ok) message.success(r.result.message || '完成')
     else message.error(r.result.message || '失败')
     st.value = { ...r.status, mode: st.value?.mode ?? '', hasShell: st.value?.hasShell ?? false }
+    if (r.result.ok && switchingActions.has(action)) {
+      // core 即将换进程，等状态流重新连上再刷新
+      switching.value = true
+      window.setTimeout(() => {
+        if (switching.value) {
+          switching.value = false
+          load(true)
+        }
+      }, 60000)
+      return
+    }
   } catch (e) {
-    message.error(String(e))
+    if (!switching.value) message.error(String(e))
   } finally {
     busy.value = null
-    load()
   }
+  load(true)
 }
 
 function tag(ok: boolean, yes = '已安装', no = '未安装') {
   return { type: ok ? ('success' as const) : ('default' as const), label: ok ? yes : no }
 }
 
-onMounted(load)
+onMounted(() => load())
 // core 在服务与单进程之间切换后重新读取检测结果
-watch(() => status.value?.mode, (m, old) => { if (m && old && m !== old) load() })
+watch(() => status.value?.mode, (m, old) => {
+  if (m && old && m !== old) {
+    switching.value = false
+    load(true)
+  }
+})
+// 状态流断开后重新连上，说明新 core 已就绪
+watch(connected, (c, old) => {
+  if (c && !old && switching.value) {
+    switching.value = false
+    load(true)
+  }
+})
 </script>
 
 <template>
@@ -57,7 +83,8 @@ watch(() => status.value?.mode, (m, old) => { if (m && old && m !== old) load() 
       当前进程未提权。标有"需管理员"的动作会弹出 UAC 确认框，确认框出现在远端的屏幕上。远端无人时，请先在现场安装带"最高权限"的开机自启任务，之后程序本身就是提权状态。
     </NAlert>
     <NAlert v-if="!isLocal" type="info">你正通过 tailnet 远程操作。安装、启动、停止、卸载服务都会切换 core 所在进程，连接会中断几秒后自动恢复。</NAlert>
-    <NAlert v-if="st?.mode === 'service'" type="info">core 正以服务运行。停止或卸载服务后，远端托盘程序会自动在本进程重新启动 core。</NAlert>
+    <NAlert v-if="switching" type="warning">core 正在切换进程，请稍候，界面会自动恢复。</NAlert>
+    <NAlert v-else-if="st?.mode === 'service'" type="info">core 正以服务运行。停止或卸载服务后，远端托盘程序会自动在本进程重新启动 core。</NAlert>
 
     <NCard v-if="st" title="运行环境">
       <NDescriptions :column="2" label-placement="left" size="small" bordered>
