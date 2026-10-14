@@ -98,23 +98,29 @@ func newControlService(o Options) (service.Service, error) {
 
 func serviceStatus(o Options) ServiceStatus {
 	st := ServiceStatus{Supported: true, Binary: ServiceBinary(o)}
+	installed, running, err := queryServiceStatus(o)
+	if err != nil {
+		st.Detail = err.Error()
+	}
+	st.Installed = installed
+	st.Running = running
+	return st
+}
+
+// queryServiceStatusGeneric 用 kardianos/service 查询，非 Windows 平台使用。
+func queryServiceStatusGeneric(o Options) (installed, running bool, err error) {
 	svc, err := newControlService(o)
 	if err != nil {
-		st.Supported = false
-		st.Detail = err.Error()
-		return st
+		return false, false, err
 	}
 	s, err := svc.Status()
 	if err != nil {
 		if errors.Is(err, service.ErrNotInstalled) || strings.Contains(err.Error(), "not installed") {
-			return st
+			return false, false, nil
 		}
-		st.Detail = err.Error()
-		return st
+		return false, false, err
 	}
-	st.Installed = true
-	st.Running = s == service.StatusRunning
-	return st
+	return true, s == service.StatusRunning, nil
 }
 
 func serviceAction(o Options, action string) error {

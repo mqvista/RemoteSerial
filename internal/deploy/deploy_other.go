@@ -46,6 +46,10 @@ func spawnDetached(o Options, action string, elevate bool) error {
 	return cmd.Start()
 }
 
+func queryServiceStatus(o Options) (installed, running bool, err error) {
+	return queryServiceStatusGeneric(o)
+}
+
 // updateServiceBinPath 在 systemd 上重写单元文件即可，没有删除延迟问题。
 func updateServiceBinPath(o Options) error {
 	svc, err := newControlService(o)

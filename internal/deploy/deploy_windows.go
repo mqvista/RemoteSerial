@@ -176,6 +176,32 @@ func taskRemove() error {
 
 // ---- 服务 ----
 
+// queryServiceStatus 只申请查询权限。kardianos 的 Status 会同时申请 START/STOP 权限，
+// 普通用户进程会得到 Access is denied，把已安装的服务误报成未安装。
+func queryServiceStatus(Options) (installed, running bool, err error) {
+	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return false, false, fmt.Errorf("连接服务管理器: %w", err)
+	}
+	defer windows.CloseServiceHandle(m)
+	name, _ := windows.UTF16PtrFromString(ServiceName)
+	h, err := windows.OpenService(m, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		var errno syscall.Errno
+		if errors.As(err, &errno) && errno == windows.ERROR_SERVICE_DOES_NOT_EXIST {
+			return false, false, nil
+		}
+		return false, false, fmt.Errorf("打开服务: %w", err)
+	}
+	defer windows.CloseServiceHandle(h)
+	var st windows.SERVICE_STATUS
+	if err := windows.QueryServiceStatus(h, &st); err != nil {
+		return true, false, fmt.Errorf("查询服务状态: %w", err)
+	}
+	running = st.CurrentState == windows.SERVICE_RUNNING || st.CurrentState == windows.SERVICE_START_PENDING
+	return true, running, nil
+}
+
 // updateServiceBinPath 直接改已注册服务的可执行路径与参数，避免卸载后立刻重装
 // 碰到"服务已标记为删除"。
 func updateServiceBinPath(o Options) error {
