@@ -1,4 +1,6 @@
 # nfpm 打包配置：生成 deb（也可 -p rpm）。
+# nfpm 只展开 arch/version 等顶层字段里的环境变量，contents.src 不展开，所以先把程序复制到固定路径：
+#   cp dist/rsagent-linux-arm64 build/nfpm/rsagent
 #   ARCH=arm64 VERSION=0.4.0 nfpm package -f deploy/nfpm.yaml -p deb -t dist/
 name: rsagent
 arch: ${ARCH}
@@ -10,7 +12,7 @@ maintainer: mqvista <mqvista@users.noreply.github.com>
 description: 远程串口桥接 Agent：内嵌 Tailscale 节点，把本机串口转成 tailnet 内可达的 TCP/RFC2217 服务。
 homepage: https://github.com/mqvista/RemoteSerial
 contents:
-  - src: ./dist/rsagent-linux-${ARCH}
+  - src: ./build/nfpm/rsagent
     dst: /usr/bin/rsagent
     file_info:
       mode: 0755

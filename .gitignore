@@ -16,3 +16,6 @@
 .idea/
 .vscode/
 *.swp
+
+# nfpm 打包临时目录
+/build/

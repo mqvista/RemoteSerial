@@ -49,9 +49,12 @@ jobs:
         run: |
           curl -fsSL -o /tmp/nfpm.tar.gz "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
           mkdir -p /tmp/nfpm && tar -xzf /tmp/nfpm.tar.gz -C /tmp/nfpm nfpm
+          mkdir -p build/nfpm
           for arch in arm64 amd64; do
+            cp "dist/rsagent-linux-$arch" build/nfpm/rsagent
             ARCH=$arch VERSION=$VERSION /tmp/nfpm/nfpm package -f deploy/nfpm.yaml -p deb -t dist/
           done
+          rm -rf build/nfpm
           ls -la dist
       - uses: actions/upload-artifact@v7
         with:

@@ -14,7 +14,9 @@ all: web windows linux-arm64
 # deb 包，需要 nfpm（https://nfpm.goreleaser.com）：make deb VERSION=0.4.0 ARCH=arm64
 ARCH ?= arm64
 deb: linux-$(ARCH)
+	mkdir -p build/nfpm && cp dist/rsagent-linux-$(ARCH) build/nfpm/rsagent
 	ARCH=$(ARCH) VERSION=$(VERSION) nfpm package -f deploy/nfpm.yaml -p deb -t dist/
+	rm -rf build/nfpm
 
 # 自更新清单与校验和：make manifest VERSION=0.4.0 [BASE_URL=https://...]
 BASE_URL ?= https://github.com/mqvista/RemoteSerial/releases/download/v$(VERSION)
