@@ -4,12 +4,15 @@ import { NAlert, NButton, NCard, NSelect, NSpace, NSwitch, NTag, NText, useMessa
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { useRoute } from 'vue-router'
 import { useStatus } from '../status'
 
 const { status } = useStatus()
 const message = useMessage()
+const route = useRoute()
 
-const bridgeId = ref<string>('')
+// 从桥接页“终端”按钮跳转时带 ?id=，优先选中它
+const bridgeId = ref<string>(typeof route.query.id === 'string' ? route.query.id : '')
 const readWrite = ref(false)
 const lineEnding = ref<'\r' | '\n' | '\r\n'>('\r\n')
 const connected = ref(false)
