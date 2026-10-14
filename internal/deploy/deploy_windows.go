@@ -370,6 +370,36 @@ func elevateAndWait(o Options, action string) error {
 	return nil
 }
 
+// spawnDetached 启动 `rsagent deploy <action>` 子进程但不等待。
+func spawnDetached(o Options, action string, elevate bool) error {
+	args := []string{"deploy", action, "--data-dir", o.DataDir}
+	if o.Listen != "" {
+		args = append(args, "--listen", o.Listen)
+	}
+	if !elevate {
+		cmd := exec.Command(o.ExePath, args...)
+		cmd.Dir = filepath.Dir(o.ExePath)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP}
+		return cmd.Start()
+	}
+	params := make([]string, 0, len(args))
+	for _, a := range args {
+		params = append(params, quoteArg(a))
+	}
+	verb, _ := windows.UTF16PtrFromString("runas")
+	file, _ := windows.UTF16PtrFromString(o.ExePath)
+	parm, _ := windows.UTF16PtrFromString(strings.Join(params, " "))
+	dir, _ := windows.UTF16PtrFromString(filepath.Dir(o.ExePath))
+	if err := windows.ShellExecute(0, verb, file, parm, dir, windows.SW_HIDE); err != nil {
+		var errno syscall.Errno
+		if errors.As(err, &errno) && errno == 1223 {
+			return errors.New("用户取消了 UAC 提权")
+		}
+		return fmt.Errorf("提权启动失败: %w", err)
+	}
+	return nil
+}
+
 // ---- 工具 ----
 
 // runHidden 运行命令行工具，不弹窗，返回合并输出。

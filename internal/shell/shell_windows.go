@@ -35,7 +35,6 @@ var iconICO []byte
 type Options struct {
 	Listen  string // core 的本机监听地址
 	DataDir string
-	Mode    string // standalone：core 在本进程；shell：core 在别处（如服务）
 	Log     *slog.Logger
 }
 
@@ -175,11 +174,7 @@ func (s *Shell) runTray(baseURL string) {
 		mBrowser := systray.AddMenuItem("在浏览器中打开", "用系统浏览器打开管理界面")
 		mData := systray.AddMenuItem("打开数据目录", "")
 		systray.AddSeparator()
-		quitTitle := "退出"
-		if s.o.Mode == "shell" {
-			quitTitle = "关闭托盘（core 继续运行）"
-		}
-		mQuit := systray.AddMenuItem(quitTitle, "")
+		mQuit := systray.AddMenuItem("退出", "退出托盘与窗口；以服务方式运行的 core 不受影响")
 
 		go func() {
 			for {
@@ -203,6 +198,7 @@ func (s *Shell) runTray(baseURL string) {
 }
 
 type statusLite struct {
+	Mode      string `json:"mode"`
 	Tailscale struct {
 		State string `json:"state"`
 		IP    string `json:"ip"`
@@ -237,7 +233,11 @@ func (s *Shell) statusLoop(baseURL string, item *systray.MenuItem) {
 				if st.Tailscale.IP != "" {
 					ts += " " + st.Tailscale.IP
 				}
-				title = fmt.Sprintf("Tailscale %s · 桥接 %d/%d 已连接", ts, connected, len(st.Bridges))
+				mode := map[string]string{"standalone": "单进程", "service": "服务"}[st.Mode]
+				if mode == "" {
+					mode = st.Mode
+				}
+				title = fmt.Sprintf("[%s] Tailscale %s · 桥接 %d/%d 已连接", mode, ts, connected, len(st.Bridges))
 			}
 			resp.Body.Close()
 		}

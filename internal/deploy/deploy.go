@@ -176,6 +176,15 @@ func Execute(o Options, action string) Result {
 	return res
 }
 
+// ExecuteDetached 在独立子进程里执行动作且不等待结果，用于服务停止或卸载自己：
+// 发起请求的进程会被动作本身结束，所以不能同步等待。需要提权时弹 UAC。
+func ExecuteDetached(o Options, action string) error {
+	if !ValidAction(action) {
+		return fmt.Errorf("未知动作 %q", action)
+	}
+	return spawnDetached(o, action, NeedsElevation(action) && !isElevated())
+}
+
 // WriteResult 由子进程调用，把结果写回数据目录。
 func WriteResult(dataDir string, r Result) error {
 	data, err := json.MarshalIndent(r, "", "  ")

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui'
 import { api } from '../api'
 import type { DeployAction, DeployStatus } from '../api'
@@ -46,6 +46,8 @@ function tag(ok: boolean, yes = '已安装', no = '未安装') {
 }
 
 onMounted(load)
+// core 在服务与单进程之间切换后重新读取检测结果
+watch(() => status.value?.mode, (m, old) => { if (m && old && m !== old) load() })
 </script>
 
 <template>
@@ -54,7 +56,8 @@ onMounted(load)
     <NAlert v-if="needsUAC && isWindows" type="warning">
       当前进程未提权。标有"需管理员"的动作会弹出 UAC 确认框，确认框出现在远端的屏幕上。远端无人时，请先在现场安装带"最高权限"的开机自启任务，之后程序本身就是提权状态。
     </NAlert>
-    <NAlert v-if="!isLocal" type="info">你正通过 tailnet 远程操作。安装服务会让远端当前进程的 core 退位给服务，连接会短暂中断几秒。</NAlert>
+    <NAlert v-if="!isLocal" type="info">你正通过 tailnet 远程操作。安装、启动、停止、卸载服务都会切换 core 所在进程，连接会中断几秒后自动恢复。</NAlert>
+    <NAlert v-if="st?.mode === 'service'" type="info">core 正以服务运行。停止或卸载服务后，远端托盘程序会自动在本进程重新启动 core。</NAlert>
 
     <NCard v-if="st" title="运行环境">
       <NDescriptions :column="2" label-placement="left" size="small" bordered>

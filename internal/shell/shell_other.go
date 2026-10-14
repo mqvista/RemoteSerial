@@ -12,7 +12,6 @@ import (
 type Options struct {
 	Listen  string
 	DataDir string
-	Mode    string
 	Log     *slog.Logger
 }
 
