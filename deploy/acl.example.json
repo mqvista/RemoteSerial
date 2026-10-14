@@ -1,0 +1,17 @@
+{
+  "tagOwners": {
+    "tag:serial-agent": ["autogroup:admin"]
+  },
+  "autoApprovers": {
+    "routes": {
+      "192.168.10.0/24": ["tag:serial-agent"]
+    }
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["tag:serial-agent:80,443,2217-2299", "192.168.10.0/24:*"]
+    }
+  ]
+}

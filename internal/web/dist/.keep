@@ -1,0 +1,1 @@
+此文件保证 internal/web/dist 非空，go:embed 才能通过编译。前端构建产物输出到本目录，不入库。
