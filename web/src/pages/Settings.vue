@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NAlert, NButton, NCard, NDynamicTags, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpace, NText, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCard, NDynamicTags, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
 import { api } from '../api'
 import type { Config } from '../api'
 import { useStatus } from '../status'
@@ -17,6 +17,8 @@ const form = ref({
   udpPort: 41641,
   hostname: '',
   controlURL: '',
+  updateURL: '',
+  updateAutoCheck: true,
 })
 const busy = ref(false)
 const pending = ref<string[]>([])
@@ -45,6 +47,8 @@ async function load() {
       udpPort: cfg.value.tailscale.udpPort,
       hostname: cfg.value.tailscale.hostname,
       controlURL: cfg.value.tailscale.controlURL,
+      updateURL: cfg.value.update?.url ?? '',
+      updateAutoCheck: cfg.value.update?.autoCheck ?? true,
     }
   } catch (e) {
     message.error(String(e))
@@ -62,6 +66,8 @@ async function save() {
       udpPort: form.value.udpPort,
       hostname: nodeStopped.value ? form.value.hostname : undefined,
       controlURL: nodeStopped.value ? form.value.controlURL : undefined,
+      updateURL: form.value.updateURL,
+      updateAutoCheck: form.value.updateAutoCheck,
     })
     cfg.value = r.config
     pending.value = r.pending
@@ -121,6 +127,18 @@ onMounted(load)
         </NFormItem>
         <NFormItem label="控制服务器">
           <NInput v-model:value="form.controlURL" :disabled="!nodeStopped" placeholder="留空用官方；Headscale 填 https://..." style="width: 360px" />
+        </NFormItem>
+      </NForm>
+    </NCard>
+
+    <NCard title="更新">
+      <NForm label-placement="left" label-width="140">
+        <NFormItem label="清单地址">
+          <NInput v-model:value="form.updateURL" placeholder="https://.../manifest.json" style="width: 100%; max-width: 560px" />
+        </NFormItem>
+        <NFormItem label="自动检查">
+          <NSwitch v-model:value="form.updateAutoCheck" />
+          <NText depth="3" style="margin-left: 12px; font-size: 12px">启动 2 分钟后和每天检查一次，只提示不自动安装。私有仓库或内网可把清单放到自己的服务器上。</NText>
         </NFormItem>
       </NForm>
     </NCard>

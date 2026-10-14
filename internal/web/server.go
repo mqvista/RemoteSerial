@@ -16,6 +16,7 @@ import (
 	"rsagent/internal/config"
 	"rsagent/internal/logging"
 	"rsagent/internal/tsnode"
+	"rsagent/internal/update"
 )
 
 // Source 标记请求来自哪个监听。
@@ -52,6 +53,9 @@ type Deps struct {
 	ShowUI      func() // 非空表示本进程带桌面壳，POST /api/ui/show 会唤起窗口
 	SetLogLevel func(string) error
 	Handoff     func() // 安装服务成功后停止本进程 core，standalone 模式才有
+	Updater     *update.Updater
+	Restart     func() // 应用更新后重启本进程；空表示不支持
+	Quit        func() // 退出本进程，供本机 POST /api/ui/quit 使用
 	StartedAt   time.Time
 	Mode        string // standalone | service | shell
 }

@@ -27,7 +27,7 @@ const message = useMessage()
 const snap = computed<TailscaleSnapshot | undefined>(() => status.value?.tailscale)
 const isLocal = computed(() => status.value?.source === 'local')
 
-const form = ref({ authKey: '', hostname: '', controlURL: '' })
+const form = ref({ authKey: '', hostname: '', controlURL: '', tags: '' })
 const busy = ref(false)
 const peers = ref<Peer[]>([])
 let peerTimer: number | undefined
@@ -132,6 +132,7 @@ async function login() {
       authKey: form.value.authKey.trim(),
       hostname: form.value.hostname.trim(),
       controlURL: form.value.controlURL.trim(),
+      tags: form.value.tags.split(/[,，;\s]+/).map((t) => t.trim()).filter(Boolean),
     })
     form.value.authKey = ''
     message.success('已发起登录')
@@ -167,7 +168,7 @@ async function loadPeers() {
 }
 
 const peerColumns: DataTableColumns<Peer> = [
-  { title: '节点', key: 'name', render: (r) => r.name.split('.')[0] },
+  { title: '节点', key: 'name', minWidth: 140, ellipsis: { tooltip: true }, render: (r) => r.name.split('.')[0] },
   { title: 'IP', key: 'ip', width: 130 },
   { title: '系统', key: 'os', width: 90 },
   {
@@ -191,6 +192,7 @@ const peerColumns: DataTableColumns<Peer> = [
   {
     title: '测路径',
     key: 'ping',
+    minWidth: 220,
     render: (r) =>
       h('div', {}, [
         h(NButton, { size: 'tiny', disabled: !r.online || pingBusy.value === r.ip, loading: pingBusy.value === r.ip, onClick: () => pingPeer(r.ip) }, { default: () => 'ping' }),
@@ -252,6 +254,7 @@ onUnmounted(() => {
     <NCard v-if="canLogin" title="登录">
       <NAlert type="info" style="margin-bottom: 12px">
         请使用 reusable、pre-authorized 且带 tag 的 auth key。带 tag 的节点不会因密钥过期掉线。auth key 只用于本次入网，不会保存。
+        也可填 OAuth client secret（tskey-client-…），此时必须填 tag，适合批量部署，secret 不会过期。
       </NAlert>
       <NForm label-placement="left" label-width="110">
         <NFormItem label="Auth key">
@@ -263,6 +266,9 @@ onUnmounted(() => {
         <NFormItem label="控制服务器">
           <NInput v-model:value="form.controlURL" placeholder="留空使用官方；Headscale 填 https://..." />
         </NFormItem>
+        <NFormItem label="Tag">
+          <NInput v-model:value="form.tags" placeholder="如 tag:serial-agent，多个用逗号分隔；普通 auth key 可留空" />
+        </NFormItem>
         <NFormItem label=" ">
           <NButton type="primary" :loading="busy" @click="login">登录</NButton>
         </NFormItem>
@@ -273,7 +279,7 @@ onUnmounted(() => {
       <template #header-extra>
         <NText depth="3" style="font-size: 12px">本节点首选 DERP：{{ snap?.homeRelay || '-' }}</NText>
       </template>
-      <NDataTable :columns="peerColumns" :data="peers" size="small" :bordered="false" :max-height="360" />
+      <NDataTable :columns="peerColumns" :data="peers" size="small" :bordered="false" :max-height="360" :scroll-x="960" />
     </NCard>
 
     <NCard v-if="snap?.state === 'Running'" title="网络诊断">

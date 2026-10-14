@@ -114,6 +114,7 @@ export interface Status {
   tailscale: TailscaleSnapshot
   webPort: number
   bridges: BridgeStatus[]
+  update: { available: boolean; latest?: string; downloaded?: string; error?: string }
 }
 
 export interface LogEntry {
@@ -190,7 +191,41 @@ export interface Config {
   logLevel: string
   tailscale: { hostname: string; controlURL: string; udpPort: number; webPort: number; advertiseRoutes: string[] }
   access: { allowedLogins: string[] }
+  update: { url: string; autoCheck: boolean }
   bridges: BridgeConfig[]
+}
+
+export interface UpdateLatest {
+  version: string
+  notes?: string
+  publishedAt?: string
+  url: string
+  sha256: string
+  size: number
+}
+
+export interface UpdatePending {
+  version: string
+  file: string
+  sha256: string
+  size: number
+  downloadedAt: string
+}
+
+export interface UpdateStatus {
+  current: string
+  platform: string
+  url: string
+  autoCheck: boolean
+  checking: boolean
+  lastCheck?: string
+  available: boolean
+  latest?: UpdateLatest
+  downloading: boolean
+  received: number
+  total: number
+  downloaded?: UpdatePending
+  error?: string
 }
 
 export interface SettingsUpdate {
@@ -201,6 +236,8 @@ export interface SettingsUpdate {
   udpPort?: number
   hostname?: string
   controlURL?: string
+  updateURL?: string
+  updateAutoCheck?: boolean
 }
 
 export interface SettingsResponse {
@@ -238,6 +275,7 @@ export type DeployAction =
   | 'service-remove'
   | 'service-start'
   | 'service-stop'
+  | 'service-restart'
   | 'firewall-add'
   | 'firewall-remove'
   | 'webview2-install'
@@ -276,7 +314,7 @@ export const api = {
   },
 
   tailscaleStatus: () => request<TailscaleSnapshot>('/api/tailscale/status'),
-  tailscaleLogin: (body: { authKey: string; hostname: string; controlURL: string }) =>
+  tailscaleLogin: (body: { authKey: string; hostname: string; controlURL: string; tags: string[] }) =>
     request<TailscaleSnapshot>('/api/tailscale/login', json('POST', body)),
   tailscaleStart: () => request<TailscaleSnapshot>('/api/tailscale/start', { method: 'POST' }),
   tailscaleStop: () => request<TailscaleSnapshot>('/api/tailscale/stop', { method: 'POST' }),
@@ -288,6 +326,12 @@ export const api = {
   captureStop: (id: string) => request<{ capture: CaptureStatus }>(`/api/bridges/${encodeURIComponent(id)}/capture/stop`, { method: 'POST' }),
   captures: () => request<{ files: CaptureFile[] }>('/api/captures'),
   deleteCapture: (name: string) => request<unknown>(`/api/captures/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  updateStatus: () => request<UpdateStatus>('/api/update/status'),
+  updateCheck: () => request<UpdateStatus>('/api/update/check', { method: 'POST' }),
+  updateDownload: () => request<UpdateStatus>('/api/update/download', { method: 'POST' }),
+  updateCancel: () => request<UpdateStatus>('/api/update/cancel', { method: 'POST' }),
+  updateClear: () => request<UpdateStatus>('/api/update/downloaded', { method: 'DELETE' }),
+  updateApply: () => request<{ result: DeployResult }>('/api/update/apply', { method: 'POST' }),
   routes: () => request<RouteStatus>('/api/tailscale/routes'),
   setRoutes: (routes: string[]) => request<RouteStatus>('/api/tailscale/routes', json('PUT', { routes })),
 

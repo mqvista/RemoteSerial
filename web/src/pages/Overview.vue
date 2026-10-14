@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
+import { RouterLink } from 'vue-router'
 import { NAlert, NCard, NDataTable, NDescriptions, NDescriptionsItem, NGrid, NGi, NStatistic, NTag, NText } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { formatBytes, formatUptime } from '../api'
@@ -32,8 +33,8 @@ const tsLabel = computed(() => {
 const connectedCount = computed(() => (status.value?.bridges ?? []).filter((b) => b.state === 'Connected').length)
 
 const bridgeColumns: DataTableColumns<BridgeStatus> = [
-  { title: '名称', key: 'name', render: (b) => b.name || b.id },
-  { title: '串口', key: 'port', render: (b) => b.resolvedPort || b.port },
+  { title: '名称', key: 'name', minWidth: 110, ellipsis: { tooltip: true }, render: (b) => b.name || b.id },
+  { title: '串口', key: 'port', width: 110, ellipsis: { tooltip: true }, render: (b) => b.resolvedPort || b.port },
   { title: 'TCP', key: 'tcpPort', width: 70 },
   {
     title: '状态',
@@ -52,9 +53,9 @@ const bridgeColumns: DataTableColumns<BridgeStatus> = [
       return h(NTag, { size: 'small', type }, { default: () => label })
     },
   },
-  { title: '客户端', key: 'client', render: (b) => b.client || '-' },
-  { title: '流量', key: 'bytes', width: 150, render: (b) => `${formatBytes(b.fromDevice)} / ${formatBytes(b.toDevice)}` },
-  { title: '错误', key: 'lastError', render: (b) => h(NText, { type: 'error', style: 'font-size:12px' }, { default: () => b.lastError || '' }) },
+  { title: '客户端', key: 'client', minWidth: 150, ellipsis: { tooltip: true }, render: (b) => b.client || '-' },
+  { title: '流量', key: 'bytes', width: 150, render: (b) => `↓ ${formatBytes(b.fromDevice)} ↑ ${formatBytes(b.toDevice)}` },
+  { title: '错误', key: 'lastError', minWidth: 120, ellipsis: { tooltip: true }, render: (b) => h(NText, { type: 'error', style: 'font-size:12px' }, { default: () => b.lastError || '' }) },
 ]
 </script>
 
@@ -63,6 +64,10 @@ const bridgeColumns: DataTableColumns<BridgeStatus> = [
   <NAlert v-else-if="!connected" type="warning" style="margin-bottom: 16px">实时推送未连接，正在轮询。</NAlert>
   <NAlert v-if="status?.accessWarning && status?.source === 'tailnet'" type="warning" style="margin-bottom: 16px">
     访问白名单为空，tailnet 内任何用户都能打开此页面。请在"设置"里填写允许的登录名。
+  </NAlert>
+  <NAlert v-if="status?.update?.available" type="info" style="margin-bottom: 16px">
+    有新版本 {{ status.update.latest }}<template v-if="status.update.downloaded === status.update.latest">，已下载</template>，到
+    <RouterLink to="/deploy">部署</RouterLink> 页更新。
   </NAlert>
 
   <NGrid v-if="status" :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
@@ -92,7 +97,7 @@ const bridgeColumns: DataTableColumns<BridgeStatus> = [
     </NGi>
     <NGi span="4">
       <NCard title="桥接">
-        <NDataTable :columns="bridgeColumns" :data="status.bridges" size="small" :bordered="false" />
+        <NDataTable :columns="bridgeColumns" :data="status.bridges" size="small" :bordered="false" :scroll-x="720" />
       </NCard>
     </NGi>
     <NGi span="4">

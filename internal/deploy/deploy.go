@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"rsagent/internal/update"
 )
 
 // Options 是执行部署动作需要的环境。
@@ -93,17 +95,20 @@ const (
 	ActionServiceRemove   = "service-remove"
 	ActionServiceStart    = "service-start"
 	ActionServiceStop     = "service-stop"
+	ActionServiceRestart  = "service-restart"
 	ActionFirewallAdd     = "firewall-add"
 	ActionFirewallRemove  = "firewall-remove"
 	ActionWebView2Install = "webview2-install"
+	ActionUpdateApply     = "update-apply" // 用已下载的新程序替换可执行文件
 )
 
 // Actions 是全部合法动作。
 var Actions = []string{
 	ActionTaskInstall, ActionTaskRemove,
-	ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop,
+	ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop, ActionServiceRestart,
 	ActionFirewallAdd, ActionFirewallRemove,
 	ActionWebView2Install,
+	ActionUpdateApply,
 }
 
 // ValidAction 判断动作名是否合法。
@@ -117,13 +122,32 @@ func ValidAction(a string) bool {
 }
 
 // NeedsElevation 判断动作在当前平台是否需要管理员权限。
-func NeedsElevation(action string) bool {
+func NeedsElevation(o Options, action string) bool {
 	switch action {
 	case ActionTaskInstall, ActionTaskRemove:
 		// 当前用户的登录触发任务不需要提权；提权后会以最高权限注册。
 		return false
 	case ActionWebView2Install:
 		// 引导程序自己会弹 UAC。
+		return false
+	case ActionUpdateApply:
+		// 目标目录当前用户能写就不用提权；要替换正在运行的服务副本时需要提权重启服务。
+		p, ok := update.ReadPending(o.DataDir)
+		for _, t := range updateTargets(o) {
+			if ok {
+				if sum, err := update.FileSHA256(t); err == nil && strings.EqualFold(sum, p.SHA256) {
+					continue // 已是新版本
+				}
+			}
+			if !writableDir(filepath.Dir(t)) {
+				return true
+			}
+			if sb := ServiceBinary(o); t == sb && !sameFile(sb, o.ExePath) {
+				if st := serviceStatus(o); st.Installed && st.Running {
+					return true
+				}
+			}
+		}
 		return false
 	default:
 		return true
@@ -152,7 +176,7 @@ func Execute(o Options, action string) Result {
 		res.Message = "未知动作"
 		return res
 	}
-	if NeedsElevation(action) && !isElevated() {
+	if NeedsElevation(o, action) && !isElevated() {
 		if err := elevateAndWait(o, action); err != nil {
 			res.Message = err.Error()
 			if r, rerr := readResult(o.DataDir); rerr == nil && r.Action == action && !r.OK && r.Message != "" {
@@ -182,7 +206,54 @@ func ExecuteDetached(o Options, action string) error {
 	if !ValidAction(action) {
 		return fmt.Errorf("未知动作 %q", action)
 	}
-	return spawnDetached(o, action, NeedsElevation(action) && !isElevated())
+	return spawnDetached(o, action, NeedsElevation(o, action) && !isElevated())
+}
+
+// updateTargets 列出更新时要替换的程序文件：本程序，以及已安装服务使用的副本。
+func updateTargets(o Options) []string {
+	targets := []string{o.ExePath}
+	if st := serviceStatus(o); st.Installed {
+		if sb := ServiceBinary(o); !sameFile(sb, o.ExePath) {
+			targets = append(targets, sb)
+		}
+	}
+	return targets
+}
+
+// updateApply 用 update 目录里已下载并校验过的程序替换目标文件。
+//
+// 已经是新版本（SHA-256 相同）的目标跳过。服务的重启由调用方决定：服务进程自己
+// 调用时不能在这里停自己。
+func updateApply(o Options) (replaced []string, err error) {
+	p, ok := update.ReadPending(o.DataDir)
+	if !ok {
+		return nil, errors.New("没有已下载的更新，请先下载")
+	}
+	for _, t := range updateTargets(o) {
+		if sum, err := update.FileSHA256(t); err == nil && strings.EqualFold(sum, p.SHA256) {
+			continue
+		}
+		if err := update.ReplaceExecutable(t, p.File); err != nil {
+			return replaced, fmt.Errorf("替换 %s: %w", t, err)
+		}
+		replaced = append(replaced, t)
+	}
+	if o.Log != nil {
+		o.Log.Info("已替换程序文件", "version", p.Version, "files", replaced)
+	}
+	return replaced, nil
+}
+
+// writableDir 判断当前进程能否在目录里创建文件。
+func writableDir(dir string) bool {
+	f, err := os.CreateTemp(dir, ".rsagent-w-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	f.Close()
+	_ = os.Remove(name)
+	return true
 }
 
 // WriteResult 由子进程调用，把结果写回数据目录。

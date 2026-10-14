@@ -48,7 +48,7 @@ func runAction(o Options, action string) error {
 		return taskInstall(o)
 	case ActionTaskRemove:
 		return taskRemove()
-	case ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop:
+	case ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop, ActionServiceRestart:
 		return serviceAction(o, action)
 	case ActionFirewallAdd:
 		return firewallAdd(o)
@@ -56,6 +56,8 @@ func runAction(o Options, action string) error {
 		return firewallRemove()
 	case ActionWebView2Install:
 		return webview2Install()
+	case ActionUpdateApply:
+		return updateApplyAndRestartService(o)
 	}
 	return fmt.Errorf("未知动作 %q", action)
 }

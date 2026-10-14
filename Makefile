@@ -7,9 +7,19 @@ LDFLAGS := -s -w \
 	-X rsagent/internal/buildinfo.Commit=$(COMMIT) \
 	-X rsagent/internal/buildinfo.Date=$(DATE)
 
-.PHONY: all web windows linux-arm64 linux-amd64 run test clean
+.PHONY: all web windows linux-arm64 linux-amd64 deb manifest run test clean
 
 all: web windows linux-arm64
+
+# deb 包，需要 nfpm（https://nfpm.goreleaser.com）：make deb VERSION=0.4.0 ARCH=arm64
+ARCH ?= arm64
+deb: linux-$(ARCH)
+	ARCH=$(ARCH) VERSION=$(VERSION) nfpm package -f deploy/nfpm.yaml -p deb -t dist/
+
+# 自更新清单与校验和：make manifest VERSION=0.4.0 [BASE_URL=https://...]
+BASE_URL ?= https://github.com/mqvista/RemoteSerial/releases/download/v$(VERSION)
+manifest:
+	go run ./tools/mkmanifest -version $(VERSION) -dir dist -base $(BASE_URL)
 
 web:
 	cd web && (test -f package-lock.json && npm ci || npm install)

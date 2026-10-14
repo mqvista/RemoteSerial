@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui'
-import { api } from '../api'
-import type { DeployAction, DeployStatus } from '../api'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NPopconfirm, NProgress, NSpace, NTag, NText, useMessage } from 'naive-ui'
+import { api, formatBytes } from '../api'
+import type { DeployAction, DeployStatus, UpdateStatus } from '../api'
 import { useStatus } from '../status'
 
 const { status, connected } = useStatus()
@@ -14,6 +14,88 @@ const lastMessage = ref('')
 // core 正在服务与单进程之间切换：期间不刷新，也不报连接错误
 const switching = ref(false)
 const switchingActions = new Set(['service-install', 'service-start', 'service-stop', 'service-remove'])
+
+// 更新
+const upd = ref<UpdateStatus | null>(null)
+const reloadOnReconnect = ref(false)
+let dlTimer: number | undefined
+const pct = computed(() => (upd.value && upd.value.total > 0 ? Math.min(100, Math.round((upd.value.received / upd.value.total) * 100)) : 0))
+const canDownload = computed(() => !!upd.value?.available && !upd.value.downloading && upd.value.downloaded?.version !== upd.value.latest?.version)
+
+async function loadUpdate() {
+  try {
+    upd.value = await api.updateStatus()
+  } catch {
+    // core 不支持或正在切换
+  }
+}
+async function updateCheck() {
+  try {
+    upd.value = await api.updateCheck()
+    if (upd.value.available) message.info(`有新版本 ${upd.value.latest?.version}`)
+    else message.success('已是最新版本')
+  } catch (e) {
+    message.error(String(e))
+    loadUpdate()
+  }
+}
+async function updateDownload() {
+  try {
+    upd.value = await api.updateDownload()
+    if (dlTimer) window.clearInterval(dlTimer)
+    dlTimer = window.setInterval(async () => {
+      await loadUpdate()
+      if (!upd.value?.downloading) {
+        window.clearInterval(dlTimer)
+        dlTimer = undefined
+        if (upd.value?.error) message.error(upd.value.error)
+        else if (upd.value?.downloaded) message.success(`已下载 ${upd.value.downloaded.version}`)
+      }
+    }, 1000)
+  } catch (e) {
+    message.error(String(e))
+  }
+}
+async function updateCancel() {
+  try {
+    upd.value = await api.updateCancel()
+  } catch (e) {
+    message.error(String(e))
+  }
+}
+async function updateClear() {
+  try {
+    upd.value = await api.updateClear()
+  } catch (e) {
+    message.error(String(e))
+  }
+}
+async function updateApply() {
+  busy.value = 'update-apply'
+  try {
+    const r = await api.updateApply()
+    message.success(r.result.message || '完成')
+    switching.value = true
+    reloadOnReconnect.value = true
+    window.setTimeout(() => {
+      if (switching.value) {
+        switching.value = false
+        load(true)
+        loadUpdate()
+      }
+    }, 90000)
+  } catch (e) {
+    message.error(String(e))
+    loadUpdate()
+  } finally {
+    busy.value = null
+  }
+}
+onUnmounted(() => {
+  if (dlTimer) window.clearInterval(dlTimer)
+})
+// 下载进度与检查结果通过状态流推送
+watch(() => status.value?.update, () => loadUpdate(), { deep: true })
 
 const isWindows = computed(() => st.value?.os === 'windows')
 const isLocal = computed(() => status.value?.source === 'local')
@@ -59,7 +141,10 @@ function tag(ok: boolean, yes = '已安装', no = '未安装') {
   return { type: ok ? ('success' as const) : ('default' as const), label: ok ? yes : no }
 }
 
-onMounted(() => load())
+onMounted(() => {
+  load()
+  loadUpdate()
+})
 // core 在服务与单进程之间切换后重新读取检测结果
 watch(() => status.value?.mode, (m, old) => {
   if (m && old && m !== old) {
@@ -67,11 +152,16 @@ watch(() => status.value?.mode, (m, old) => {
     load(true)
   }
 })
-// 状态流断开后重新连上，说明新 core 已就绪
+// 状态流断开后重新连上，说明新 core 已就绪；更新后整页重载以拿到新前端
 watch(connected, (c, old) => {
   if (c && !old && switching.value) {
     switching.value = false
+    if (reloadOnReconnect.value) {
+      window.location.reload()
+      return
+    }
     load(true)
+    loadUpdate()
   }
 })
 </script>
@@ -95,6 +185,44 @@ watch(connected, (c, old) => {
         </NDescriptionsItem>
         <NDescriptionsItem label="程序路径">{{ st.exePath }}</NDescriptionsItem>
       </NDescriptions>
+    </NCard>
+
+    <NCard title="更新">
+      <template #header-extra>
+        <NSpace :size="8" align="center">
+          <NText depth="3" style="font-size: 12px">当前 {{ upd?.current || status?.version }}</NText>
+          <NButton size="small" :loading="upd?.checking" @click="updateCheck">检查更新</NButton>
+        </NSpace>
+      </template>
+      <NText v-if="upd?.error" type="error" style="display: block; margin-bottom: 8px; font-size: 12px">{{ upd.error }}</NText>
+      <template v-if="upd?.latest">
+        <NDescriptions :column="2" label-placement="left" size="small" bordered>
+          <NDescriptionsItem label="最新版本">
+            {{ upd.latest.version }}
+            <NTag size="small" :type="upd.available ? 'warning' : 'success'" style="margin-left: 6px">{{ upd.available ? '可更新' : '已是最新' }}</NTag>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="发布时间">{{ upd.latest.publishedAt ? new Date(upd.latest.publishedAt).toLocaleString('zh-CN', { hour12: false }) : '-' }}</NDescriptionsItem>
+          <NDescriptionsItem label="大小">{{ upd.latest.size ? formatBytes(upd.latest.size) : '-' }}</NDescriptionsItem>
+          <NDescriptionsItem label="检查时间">{{ upd.lastCheck ? new Date(upd.lastCheck).toLocaleString('zh-CN', { hour12: false }) : '-' }}</NDescriptionsItem>
+        </NDescriptions>
+        <pre v-if="upd.latest.notes" class="notes">{{ upd.latest.notes }}</pre>
+      </template>
+      <NText v-else depth="3">尚未检查。清单地址在“设置”页配置，默认指向 GitHub Releases。</NText>
+      <NProgress v-if="upd?.downloading" type="line" :percentage="pct" indicator-placement="inside" processing style="margin-top: 12px" />
+      <NText v-if="upd?.downloaded && !upd.downloading" depth="3" style="display: block; margin-top: 8px; font-size: 12px">
+        已下载 {{ upd.downloaded.version }}（{{ formatBytes(upd.downloaded.size) }}），SHA-256 校验通过。
+      </NText>
+      <NSpace style="margin-top: 12px">
+        <NButton v-if="canDownload" type="primary" @click="updateDownload">下载 {{ upd?.latest?.version }}</NButton>
+        <NButton v-if="upd?.downloading" @click="updateCancel">取消下载</NButton>
+        <NPopconfirm v-if="upd?.downloaded && !upd.downloading" @positive-click="updateApply">
+          <template #trigger>
+            <NButton type="primary" :loading="busy === 'update-apply'">应用 {{ upd!.downloaded!.version }} 并重启</NButton>
+          </template>
+          替换程序文件并重启{{ st?.mode === 'service' ? '服务' : '程序' }}，连接会中断几秒后自动恢复。{{ needsUAC ? '程序目录不可写时会弹 UAC。' : '' }}继续？
+        </NPopconfirm>
+        <NButton v-if="upd?.downloaded && !upd.downloading" @click="updateClear">删除已下载</NButton>
+      </NSpace>
     </NCard>
 
     <NCard v-if="st?.task.supported" title="开机自启（计划任务）">
@@ -179,3 +307,14 @@ watch(connected, (c, old) => {
     <NText v-if="lastMessage" depth="3">最近结果：{{ lastMessage }}</NText>
   </NSpace>
 </template>
+
+<style scoped>
+.notes {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: rgba(128, 128, 128, 0.1);
+  border-radius: 4px;
+}
+</style>

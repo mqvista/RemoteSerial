@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"rsagent/internal/bridge"
@@ -13,6 +14,7 @@ import (
 	"rsagent/internal/config"
 	"rsagent/internal/logging"
 	"rsagent/internal/tsnode"
+	"rsagent/internal/update"
 	"rsagent/internal/web"
 )
 
@@ -25,6 +27,8 @@ type Options struct {
 	ShowUI   func() // 桌面模式下由壳层提供，用于单实例唤起窗口
 	Mode     string // standalone | service，空为 standalone
 	Handoff  func() // 部署页安装服务成功后调用，让本进程的 core 退位给服务
+	Restart  func() // 应用更新后重启本进程；空表示不支持
+	Quit     func() // 本机 POST /api/ui/quit 时退出本进程
 }
 
 // Run 运行 core，阻塞到 ctx 取消。
@@ -108,6 +112,16 @@ func Run(ctx context.Context, o Options) error {
 	})
 	bridges.Apply(cfg.Bridges)
 
+	upd := update.New(update.Options{
+		DataDir:   paths.DataDir,
+		Current:   buildinfo.Version,
+		URL:       cfg.Update.URL,
+		AutoCheck: cfg.Update.AutoCheck,
+		Log:       lg.Logger.With("mod", "update"),
+		OnChange:  hub.Notify,
+	})
+	go upd.AutoCheckLoop(ctx)
+
 	srv = web.New(web.Deps{
 		Log:         lg.Logger,
 		Ring:        lg.Ring,
@@ -119,14 +133,24 @@ func Run(ctx context.Context, o Options) error {
 		ShowUI:      o.ShowUI,
 		SetLogLevel: lg.SetLevel,
 		Handoff:     o.Handoff,
+		Updater:     upd,
+		Restart:     o.Restart,
+		Quit:        o.Quit,
 		StartedAt:   time.Now(),
 		Mode:        o.Mode,
 	})
 
 	if node.HasState() {
 		lg.Info("发现已保存的节点状态，自动上线")
-		if err := node.Start(ctx, ""); err != nil {
+		if err := node.Start(ctx, "", nil); err != nil {
 			lg.Error("自动上线失败", "err", err)
+		}
+	} else if key := os.Getenv("RSAGENT_AUTH_KEY"); key != "" {
+		// 无人值守部署：环境变量给 key（和 tag），首次启动自动入网。key 不写日志。
+		tags := SplitTags(os.Getenv("RSAGENT_TAGS"))
+		lg.Info("用环境变量 RSAGENT_AUTH_KEY 自动登录", "tags", tags)
+		if err := node.Start(ctx, key, tags); err != nil {
+			lg.Error("自动登录失败", "err", err)
 		}
 	} else {
 		lg.Info("节点未登录，等待在界面输入 auth key")

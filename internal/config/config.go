@@ -24,7 +24,17 @@ type Config struct {
 	LogLevel  string    `json:"logLevel"` // debug | info | warn | error
 	Tailscale Tailscale `json:"tailscale"`
 	Access    Access    `json:"access"`
+	Update    Update    `json:"update"`
 	Bridges   []Bridge  `json:"bridges"`
+}
+
+// DefaultUpdateURL 是发布清单的默认地址，指向 GitHub Releases 最新版本。
+const DefaultUpdateURL = "https://github.com/mqvista/RemoteSerial/releases/latest/download/manifest.json"
+
+// Update 是自更新设置。
+type Update struct {
+	URL       string `json:"url"`       // 发布清单地址，私有仓库或内网可改为自建地址
+	AutoCheck bool   `json:"autoCheck"` // 启动后和每天自动检查一次，只提示不自动安装
 }
 
 // Tailscale 是内嵌 tsnet 节点的参数。auth key 不落盘，不在此结构中。
@@ -85,6 +95,7 @@ func Default() *Config {
 			AdvertiseRoutes: []string{},
 		},
 		Access:  Access{AllowedLogins: []string{}},
+		Update:  Update{URL: DefaultUpdateURL, AutoCheck: true},
 		Bridges: []Bridge{},
 	}
 }
@@ -110,6 +121,9 @@ func Load(path string) (cfg *Config, created bool, err error) {
 		return nil, false, fmt.Errorf("配置版本 %d 高于程序支持的 %d", cfg.Version, CurrentVersion)
 	}
 	cfg.Version = CurrentVersion
+	if cfg.Update.URL == "" {
+		cfg.Update.URL = DefaultUpdateURL
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, false, fmt.Errorf("配置校验失败: %w", err)
 	}
@@ -166,6 +180,9 @@ func (c *Config) Validate() error {
 		if _, _, err := net.ParseCIDR(r); err != nil {
 			return fmt.Errorf("advertiseRoutes 含非法 CIDR %q", r)
 		}
+	}
+	if u := c.Update.URL; u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+		return fmt.Errorf("update.url 必须是 http(s) 地址: %q", u)
 	}
 
 	ids := map[string]bool{}

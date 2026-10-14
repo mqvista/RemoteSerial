@@ -45,6 +45,13 @@ func (s *Server) routes() {
 	api.HandleFunc("POST /api/bridges/{id}/{action}", s.handleBridgeAction)
 
 	api.HandleFunc("POST /api/ui/show", s.handleUIShow)
+	api.HandleFunc("POST /api/ui/quit", s.handleUIQuit)
+	api.HandleFunc("GET /api/update/status", s.handleUpdateStatus)
+	api.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
+	api.HandleFunc("POST /api/update/download", s.handleUpdateDownload)
+	api.HandleFunc("POST /api/update/cancel", s.handleUpdateCancel)
+	api.HandleFunc("DELETE /api/update/downloaded", s.handleUpdateClear)
+	api.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
 	api.HandleFunc("GET /api/deploy/status", s.handleDeployStatus)
 	api.HandleFunc("POST /api/deploy/{action}", s.handleDeployAction)
 
@@ -70,6 +77,15 @@ type StatusResponse struct {
 	Tailscale     tsnode.Snapshot  `json:"tailscale"`
 	WebPort       int              `json:"webPort"`
 	Bridges       []bridge.Status  `json:"bridges"`
+	Update        UpdateSummary    `json:"update"`
+}
+
+// UpdateSummary 是总览里的更新提示。
+type UpdateSummary struct {
+	Available  bool   `json:"available"`
+	Latest     string `json:"latest,omitempty"`
+	Downloaded string `json:"downloaded,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 func (s *Server) buildStatus(r *http.Request) StatusResponse {
@@ -93,6 +109,17 @@ func (s *Server) buildStatus(r *http.Request) StatusResponse {
 	}
 	if s.deps.Bridges != nil {
 		resp.Bridges = s.deps.Bridges.Status()
+	}
+	if s.deps.Updater != nil {
+		st := s.deps.Updater.Status()
+		resp.Update.Available = st.Available
+		resp.Update.Error = st.Error
+		if st.Latest != nil {
+			resp.Update.Latest = st.Latest.Version
+		}
+		if st.Downloaded != nil {
+			resp.Update.Downloaded = st.Downloaded.Version
+		}
 	}
 	return resp
 }

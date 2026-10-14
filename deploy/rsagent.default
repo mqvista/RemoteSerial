@@ -1,0 +1,6 @@
+# rsagent 的环境变量，由 systemd 单元读取。
+#
+# 首次启动且未登录时，用下面两项自动入网（auth key 或 OAuth client secret，后者必须给 tag）。
+# 入网成功后登录状态保存在 /var/lib/rsagent/tsstate，建议随后删掉这里的 key。
+#RSAGENT_AUTH_KEY=tskey-client-xxxxxxxx
+#RSAGENT_TAGS=tag:serial-agent

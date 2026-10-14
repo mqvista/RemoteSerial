@@ -7,9 +7,10 @@ import (
 )
 
 type loginRequest struct {
-	AuthKey    string `json:"authKey"`
-	Hostname   string `json:"hostname"`
-	ControlURL string `json:"controlURL"`
+	AuthKey    string   `json:"authKey"`
+	Hostname   string   `json:"hostname"`
+	ControlURL string   `json:"controlURL"`
+	Tags       []string `json:"tags"` // OAuth client secret 登录时必填
 }
 
 // POST /api/tailscale/login：首次入网。auth key 只在内存中传递，不记录日志。
@@ -26,6 +27,18 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "auth key 不能为空")
 		return
 	}
+	tags := make([]string, 0, len(req.Tags))
+	for _, t := range req.Tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if !strings.HasPrefix(t, "tag:") {
+			writeError(w, http.StatusBadRequest, "tag 必须以 tag: 开头: "+t)
+			return
+		}
+		tags = append(tags, t)
+	}
 
 	if req.Hostname != "" || req.ControlURL != s.deps.Config.Tailscale.ControlURL {
 		if err := s.deps.Node.UpdateConfig(req.Hostname, req.ControlURL); err != nil {
@@ -41,17 +54,17 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := s.deps.Node.Start(r.Context(), req.AuthKey); err != nil {
+	if err := s.deps.Node.Start(r.Context(), req.AuthKey, tags); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	s.deps.Log.Info("已发起 Tailscale 登录", "hostname", s.deps.Config.Tailscale.Hostname, "by", requesterLabel(r))
+	s.deps.Log.Info("已发起 Tailscale 登录", "hostname", s.deps.Config.Tailscale.Hostname, "tags", tags, "oauth", strings.HasPrefix(req.AuthKey, "tskey-client-"), "by", requesterLabel(r))
 	writeJSON(w, http.StatusAccepted, s.deps.Node.Snapshot())
 }
 
 // POST /api/tailscale/start：用已有状态启动。
 func (s *Server) handleTailscaleStart(w http.ResponseWriter, r *http.Request) {
-	if err := s.deps.Node.Start(r.Context(), ""); err != nil {
+	if err := s.deps.Node.Start(r.Context(), "", nil); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}

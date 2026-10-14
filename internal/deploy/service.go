@@ -147,6 +147,19 @@ func serviceAction(o Options, action string) error {
 			return fmt.Errorf("停止服务: %w", err)
 		}
 		return nil
+	case ActionServiceRestart:
+		_ = svc.Stop()
+		// 等服务管理器把旧进程收干净，否则立刻 Start 可能报“服务正在停止”。
+		for i := 0; i < 20; i++ {
+			if _, running, _ := queryServiceStatus(o); !running {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		if err := svc.Start(); err != nil {
+			return fmt.Errorf("重启服务: %w", err)
+		}
+		return nil
 	}
 	return fmt.Errorf("未知服务动作 %q", action)
 }
@@ -221,6 +234,27 @@ func copyFile(src, dst string) error {
 	}
 	_ = os.Remove(dst)
 	return os.Rename(tmp, dst)
+}
+
+// updateApplyAndRestartService 替换程序文件；服务在运行且不是本进程时顺带重启服务。
+// 本进程就是服务时（服务模式下由 web 层调用）由调用方另起子进程重启。
+func updateApplyAndRestartService(o Options) error {
+	replaced, err := updateApply(o)
+	if err != nil {
+		return err
+	}
+	sb := ServiceBinary(o)
+	if sameFile(sb, o.ExePath) {
+		return nil
+	}
+	for _, t := range replaced {
+		if t == sb {
+			if st := serviceStatus(o); st.Installed && st.Running {
+				return serviceAction(o, ActionServiceRestart)
+			}
+		}
+	}
+	return nil
 }
 
 // RunAsService 在服务管理器控制下运行 core。

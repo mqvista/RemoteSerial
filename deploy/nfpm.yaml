@@ -1,0 +1,24 @@
+# nfpm 打包配置：生成 deb（也可 -p rpm）。
+#   ARCH=arm64 VERSION=0.4.0 nfpm package -f deploy/nfpm.yaml -p deb -t dist/
+name: rsagent
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: mqvista <mqvista@users.noreply.github.com>
+description: 远程串口桥接 Agent：内嵌 Tailscale 节点，把本机串口转成 tailnet 内可达的 TCP/RFC2217 服务。
+homepage: https://github.com/mqvista/RemoteSerial
+contents:
+  - src: ./dist/rsagent-linux-${ARCH}
+    dst: /usr/bin/rsagent
+    file_info:
+      mode: 0755
+  - src: ./deploy/systemd/rsagent.service
+    dst: /lib/systemd/system/rsagent.service
+  - src: ./deploy/rsagent.default
+    dst: /etc/default/rsagent
+    type: config|noreplace
+scripts:
+  postinstall: ./deploy/postinstall.sh
+  preremove: ./deploy/preremove.sh

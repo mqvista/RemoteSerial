@@ -20,10 +20,17 @@ ACL 需要允许你的账号访问 tag 节点的 80 端口和桥接端口，模�
 rsagent              无参数等于 ui（仅 Windows）
 rsagent ui           托盘 + 窗口；本机已有 core 时只唤起窗口或只跑壳
 rsagent run          前台运行 core，不带界面，适合 Linux 与 systemd
+rsagent service      run | install | uninstall | start | stop | restart | status
+rsagent deploy       task-install 等部署动作，需要时以管理员身份调用
+rsagent provision    --auth-key <key> --tags tag:x [--hostname 名]  无人值守入网（支持 OAuth client secret）
+rsagent update       [--check]  检查、下载并应用更新
+rsagent quit         让本机运行中的托盘实例退出
 rsagent version
 ```
 
-通用选项：`--data-dir`、`--listen`（默认 127.0.0.1:7890）、`--log-level`；`run` 另有 `--console`。
+通用选项：`--data-dir`、`--listen`（默认 127.0.0.1:7890）、`--log-level`；`run` 另有 `--console`。环境变量 `RSAGENT_AUTH_KEY` / `RSAGENT_TAGS` 在首次启动时自动入网。
+
+安装包 `rsagent-setup-<版本>.exe` 支持静默批量部署：`/VERYSILENT /AUTHKEY=tskey-client-… /TAGS=tag:serial-agent /HOSTNAME=rs-site1 /TASKS="autostart,firewall"`。Linux 用 `deploy/install.sh` 或 `.deb`。详见 `docs/使用说明.md` 第 9、10 节。
 
 数据目录默认 Windows 为 `%ProgramData%\RemoteSerial`，Linux root 为 `/var/lib/rsagent`，内含 `config.json`、`tsstate\`（节点私钥，勿外泄）、`logs\`。
 
@@ -36,14 +43,19 @@ rsagent version
 
 ```powershell
 # Windows
-.\build.ps1                 # 前端 + windows/amd64（GUI 子系统）+ linux/arm64，输出到 dist/
+.\build.ps1 -Version 0.4.0  # 前端 + windows/amd64（GUI 子系统）+ linux/arm64，输出到 dist/
 .\build.ps1 -SkipWeb        # 跳过前端
+.\build.ps1 -Version 0.4.0 -Installer -Manifest   # 另外生成安装包（需 Inno Setup 6）和 manifest.json
 ```
 
 ```sh
 # Linux / macOS
 make all
+make deb VERSION=0.4.0 ARCH=arm64    # 需要 nfpm
+make manifest VERSION=0.4.0
 ```
+
+发布：打 tag `v0.4.0` 推送后，`.github/workflows/release.yml` 自动构建全部平台、deb、安装包、`manifest.json` 与 `SHA256SUMS` 并创建 GitHub Release。程序内自更新默认读取该 Release 的 `manifest.json`。
 
 ## 本地运行
 
@@ -81,9 +93,12 @@ internal/tsnode    tsnet 节点封装
 internal/bridge    串口桥接
 internal/web       HTTP API、WebSocket 推送、内嵌前端
 internal/shell     托盘 + webview（Windows）
-internal/deploy    部署检测与动作：计划任务、服务、防火墙、WebView2、提权子进程
+internal/deploy    部署检测与动作：计划任务、服务、防火墙、WebView2、提权子进程、更新替换
+internal/update    自更新：清单、下载校验、替换文件、重启
 tools/mkicon       图标生成
+tools/mkmanifest   发布清单与 SHA256SUMS 生成
+installer/         Inno Setup 安装包脚本
 web/               Vue 3 + Vite 前端
-deploy/            ACL 模板、部署辅助文件
+deploy/            ACL 模板、systemd 单元、install.sh、nfpm 打包配置
 docs/              设计文档
 ```

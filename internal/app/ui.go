@@ -2,16 +2,21 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"rsagent/internal/buildinfo"
 	"rsagent/internal/config"
 	"rsagent/internal/deploy"
 	"rsagent/internal/shell"
+	"rsagent/internal/update"
 )
 
 // RunUI 以桌面模式运行：主 goroutine 跑托盘与窗口，后台的看护循环保证本机总有一个 core 可用。
@@ -37,30 +42,78 @@ func RunUI(ctx context.Context, o Options) error {
 	if probeCore(listen) == coreWithShell {
 		return nil
 	}
+	update.CleanupApplied(paths.DataDir, buildinfo.Version)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	sh := shell.New(shell.Options{Listen: listen, DataDir: paths.DataDir})
-	sup := &supervisor{opts: o, listen: listen, dataDir: paths.DataDir, show: sh.Open}
+	sup := &supervisor{opts: o, listen: listen, dataDir: paths.DataDir, show: sh.Open, quit: sh.Quit}
 	go sup.loop(ctx)
 
 	err = sh.Run(ctx)
 	cancel()
 	sup.wait(5 * time.Second)
+	if sup.restartRequested.Load() {
+		// 端口和串口都已释放，再拉起新版本；新实例会等本进程退出。
+		if rerr := update.RestartSelf(); rerr != nil {
+			return fmt.Errorf("重启失败: %w", rerr)
+		}
+	}
 	return err
 }
 
-// supervisor 负责按需启动和回收本进程内的 core。
+// supervisor 负责按需启动和回收本进程内的 core，以及在只跑壳时跟随服务的版本自更新。
 type supervisor struct {
 	opts    Options
 	listen  string
 	dataDir string
 	show    func()
+	quit    func()
+
+	restartRequested atomic.Bool
+	selfUpdateTried  map[string]bool // 已尝试过自更新的 core 版本，避免反复
 
 	mu         sync.Mutex
 	cancelCore context.CancelFunc
 	coreDone   chan error
+}
+
+// restart 让 RunUI 退出后重新启动本程序，用于应用更新。
+func (s *supervisor) restart() {
+	s.restartRequested.Store(true)
+	s.quit()
+}
+
+// followCoreVersion 在只跑壳时检查 core 的版本：core 已经更新（服务模式下由服务自己替换）
+// 而本程序还是旧版本时，用同一份已下载的程序替换自己并重启。
+func (s *supervisor) followCoreVersion() {
+	v := coreVersion(s.listen)
+	if v == "" || v == buildinfo.Version {
+		return
+	}
+	if s.selfUpdateTried == nil {
+		s.selfUpdateTried = map[string]bool{}
+	}
+	if s.selfUpdateTried[v] {
+		return
+	}
+	s.selfUpdateTried[v] = true
+	p, ok := update.ReadPending(s.dataDir)
+	if !ok || p.Version != v {
+		return
+	}
+	exe := currentExe()
+	if sum, err := update.FileSHA256(exe); err == nil && strings.EqualFold(sum, p.SHA256) {
+		// 文件已是新版本，只是还没重启
+		s.restart()
+		return
+	}
+	res := deploy.Execute(deploy.Options{ExePath: exe, DataDir: s.dataDir, Listen: s.listen}, deploy.ActionUpdateApply)
+	if !res.OK {
+		return
+	}
+	s.restart()
 }
 
 func (s *supervisor) loop(ctx context.Context) {
@@ -75,6 +128,7 @@ func (s *supervisor) loop(ctx context.Context) {
 		if !s.coreRunning() {
 			if coreResponds(s.listen) {
 				missingSince = time.Time{}
+				s.followCoreVersion()
 			} else {
 				if missingSince.IsZero() {
 					missingSince = time.Now()
@@ -97,13 +151,17 @@ func (s *supervisor) loop(ctx context.Context) {
 	}
 }
 
-// shouldStartCore 判断没有 core 响应时是否该由本进程来起：服务未安装或已停止才起。
-func (s *supervisor) shouldStartCore() bool {
+func currentExe() string {
 	exe, _ := os.Executable()
 	if p, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = p
 	}
-	st := deploy.GetStatus(deploy.Options{ExePath: exe, DataDir: s.dataDir, Listen: s.listen})
+	return exe
+}
+
+// shouldStartCore 判断没有 core 响应时是否该由本进程来起：服务未安装或已停止才起。
+func (s *supervisor) shouldStartCore() bool {
+	st := deploy.GetStatus(deploy.Options{ExePath: currentExe(), DataDir: s.dataDir, Listen: s.listen})
 	if st.Service.Installed && st.Service.Running {
 		return false
 	}
@@ -142,6 +200,8 @@ func (s *supervisor) startCore(ctx context.Context) {
 	o.Mode = "standalone"
 	o.ShowUI = s.show
 	o.Handoff = cancel
+	o.Restart = s.restart
+	o.Quit = s.quit
 	done := make(chan error, 1)
 	go func() { done <- Run(cctx, o) }()
 	s.cancelCore = cancel
@@ -194,4 +254,21 @@ func coreResponds(listen string) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+// coreVersion 读取本机 core 的版本号，失败返回空。
+func coreVersion(listen string) string {
+	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	resp, err := client.Get("http://" + listen + "/api/version")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Version string `json:"version"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&v) != nil {
+		return ""
+	}
+	return v.Version
 }

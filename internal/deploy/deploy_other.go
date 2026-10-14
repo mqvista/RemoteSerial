@@ -22,8 +22,10 @@ func fillStatus(st *Status, o Options) {
 
 func runAction(o Options, action string) error {
 	switch action {
-	case ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop:
+	case ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop, ActionServiceRestart:
 		return serviceAction(o, action)
+	case ActionUpdateApply:
+		return updateApplyAndRestartService(o)
 	case ActionTaskInstall, ActionTaskRemove, ActionFirewallAdd, ActionFirewallRemove, ActionWebView2Install:
 		return fmt.Errorf("动作 %q 仅支持 Windows", action)
 	}

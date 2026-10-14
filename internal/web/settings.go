@@ -17,6 +17,8 @@ type settingsUpdate struct {
 	UDPPort       *int      `json:"udpPort"`
 	Hostname      *string   `json:"hostname"`
 	ControlURL    *string   `json:"controlURL"`
+	UpdateURL     *string   `json:"updateURL"`
+	UpdateAuto    *bool     `json:"updateAutoCheck"`
 }
 
 type settingsResponse struct {
@@ -85,6 +87,16 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	updateChanged := false
+	if u.UpdateURL != nil && strings.TrimSpace(*u.UpdateURL) != cfg.Update.URL {
+		cfg.Update.URL = strings.TrimSpace(*u.UpdateURL)
+		updateChanged = true
+	}
+	if u.UpdateAuto != nil && *u.UpdateAuto != cfg.Update.AutoCheck {
+		cfg.Update.AutoCheck = *u.UpdateAuto
+		updateChanged = true
+	}
+
 	if err := cfg.Validate(); err != nil {
 		*cfg = backup
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -103,6 +115,12 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	}
 	if u.AllowedLogins != nil {
 		resp.Applied = append(resp.Applied, "allowedLogins")
+	}
+	if updateChanged {
+		if s.deps.Updater != nil {
+			s.deps.Updater.SetConfig(cfg.Update.URL, cfg.Update.AutoCheck)
+		}
+		resp.Applied = append(resp.Applied, "update")
 	}
 	resp.RestartRequired = len(resp.Pending) > 0
 	resp.Config = cfg

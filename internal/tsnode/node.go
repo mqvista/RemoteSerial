@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"tailscale.com/client/local"
+	_ "tailscale.com/feature/oauthkey" // 让 tskey-client-… 形式的 OAuth client secret 可当 auth key 用
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
@@ -179,7 +180,11 @@ func (n *Node) Running() bool {
 }
 
 // Start 启动节点。首次入网需要 authKey；已有状态时传空即可。
-func (n *Node) Start(ctx context.Context, authKey string) error {
+//
+// tags 是入网时申请的 tag（如 tag:serial-agent）。authKey 是 OAuth client secret
+// （tskey-client-…）时必须给 tags，tsnet 会用它向 API 换取一次性 auth key；普通
+// auth key 可不给，由 key 自带的 tag 决定。
+func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 	n.mu.Lock()
 	if n.srv != nil {
 		n.mu.Unlock()
@@ -188,6 +193,14 @@ func (n *Node) Start(ctx context.Context, authKey string) error {
 	if authKey == "" && !n.HasState() {
 		n.mu.Unlock()
 		return errors.New("尚未登录，需要 auth key")
+	}
+	if strings.HasPrefix(authKey, "tskey-client-") && len(tags) == 0 {
+		n.mu.Unlock()
+		return errors.New("使用 OAuth client secret 登录必须指定 tag，例如 tag:serial-agent")
+	}
+	if strings.HasPrefix(authKey, "tskey-client-") && !strings.Contains(authKey, "?") {
+		// 不加 ephemeral=false 时 OAuth 换出的 key 默认建临时节点，断线即被删除。
+		authKey += "?ephemeral=false&preauthorized=true"
 	}
 	if err := os.MkdirAll(n.cfg.StateDir, 0o700); err != nil {
 		n.mu.Unlock()
@@ -203,6 +216,9 @@ func (n *Node) Start(ctx context.Context, authKey string) error {
 		Ephemeral:  false,
 		Logf:       n.tsLogf(slog.LevelDebug),
 		UserLogf:   n.tsLogf(slog.LevelInfo),
+	}
+	if authKey != "" && len(tags) > 0 {
+		srv.AdvertiseTags = append([]string(nil), tags...)
 	}
 	n.srv = srv
 	n.setStateLocked(StateStarting, "")

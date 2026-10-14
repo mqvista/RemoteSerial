@@ -4,10 +4,15 @@
 #   .\build.ps1 -Version 0.1.0       stamp a version
 #   .\build.ps1 -SkipWeb             skip npm install / vite build
 #   .\build.ps1 -Targets windows     only one target (windows | linux-arm64 | linux-amd64)
+#   .\build.ps1 -Installer           also build the Inno Setup installer (needs ISCC.exe; see Find-ISCC)
+#   .\build.ps1 -Manifest -BaseURL https://.../v0.4.0   also write dist/manifest.json + SHA256SUMS
 param(
     [string]$Version = "dev",
     [switch]$SkipWeb,
-    [string[]]$Targets = @("windows", "linux-arm64")
+    [string[]]$Targets = @("windows", "linux-arm64"),
+    [switch]$Installer,
+    [switch]$Manifest,
+    [string]$BaseURL = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,4 +63,35 @@ foreach ($t in $Targets) {
     if ($LASTEXITCODE -ne 0) { throw "go build failed for $t" }
 }
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue
+
+# Inno Setup compiler: env ISCC, standard install dirs, scoop, or a portable extraction (innoextract) in INNO_SETUP_DIR.
+function Find-ISCC {
+    $candidates = @()
+    if ($env:ISCC) { $candidates += $env:ISCC }
+    if ($env:INNO_SETUP_DIR) { $candidates += (Join-Path $env:INNO_SETUP_DIR "ISCC.exe"); $candidates += (Join-Path $env:INNO_SETUP_DIR "app\ISCC.exe") }
+    $candidates += "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+    $candidates += "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+    $candidates += "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+    $candidates += "$HOME\scoop\apps\inno-setup\current\ISCC.exe"
+    foreach ($c in $candidates) { if ($c -and (Test-Path $c)) { return $c } }
+    $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return $null
+}
+
+if ($Installer) {
+    if ($Targets -notcontains "windows") { throw "-Installer needs the windows target" }
+    $iscc = Find-ISCC
+    if (-not $iscc) { throw "ISCC.exe not found: install Inno Setup 6, or set ISCC / INNO_SETUP_DIR" }
+    Write-Host "==> installer via $iscc"
+    & $iscc /Q "/DAppVersion=$Version" (Join-Path $root "installer\rsagent.iss")
+    if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+}
+
+if ($Manifest) {
+    if (-not $BaseURL) { $BaseURL = "https://github.com/mqvista/RemoteSerial/releases/download/v$Version" }
+    Write-Host "==> manifest"
+    go run ./tools/mkmanifest -version $Version -dir $distDir -base $BaseURL
+    if ($LASTEXITCODE -ne 0) { throw "mkmanifest failed" }
+}
 Write-Host "==> done: $distDir"

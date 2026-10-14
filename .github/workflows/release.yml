@@ -1,0 +1,113 @@
+# 打 tag（v0.4.0）或手动触发时构建全部平台、生成安装包与自更新清单，并发布到 GitHub Releases。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号，如 0.4.0（不带 v）'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  NFPM_VERSION: '2.41.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then v="${{ github.event.inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: 前端
+        run: |
+          cd web && npm ci && npm run build
+      - name: Go 交叉编译
+        run: make windows linux-arm64 linux-amd64 VERSION=$VERSION
+      - name: deb 包
+        run: |
+          curl -fsSL -o /tmp/nfpm.tar.gz "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          mkdir -p /tmp/nfpm && tar -xzf /tmp/nfpm.tar.gz -C /tmp/nfpm nfpm
+          for arch in arm64 amd64; do
+            ARCH=$arch VERSION=$VERSION /tmp/nfpm/nfpm package -f deploy/nfpm.yaml -p deb -t dist/
+          done
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/
+          if-no-files-found: error
+
+  installer:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-linux
+          path: dist
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: 安装包
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.build.outputs.version }}" installer\rsagent.iss
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-installer
+          path: dist/rsagent-setup-*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [build, installer]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-linux
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-installer
+          path: dist
+      - name: 清单与校验和
+        run: |
+          V=${{ needs.build.outputs.version }}
+          go run ./tools/mkmanifest -version "$V" -dir dist -base "https://github.com/${{ github.repository }}/releases/download/v$V"
+          cat dist/manifest.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          name: v${{ needs.build.outputs.version }}
+          generate_release_notes: true
+          files: |
+            dist/rsagent-windows-amd64.exe
+            dist/rsagent-linux-arm64
+            dist/rsagent-linux-amd64
+            dist/rsagent-setup-*.exe
+            dist/*.deb
+            dist/manifest.json
+            dist/SHA256SUMS

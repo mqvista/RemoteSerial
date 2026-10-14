@@ -49,6 +49,10 @@ func (s *Server) handleDeployAction(w http.ResponseWriter, r *http.Request) {
 	}
 	opts := s.deployOptions()
 	by := requesterLabel(r)
+	if action == deploy.ActionUpdateApply {
+		writeError(w, http.StatusBadRequest, "请使用更新接口 /api/update/apply")
+		return
+	}
 
 	if s.deps.Mode == "service" {
 		switch action {
@@ -56,16 +60,19 @@ func (s *Server) handleDeployAction(w http.ResponseWriter, r *http.Request) {
 			// 服务跑在 SYSTEM 账户与会话 0，计划任务会注册到错误的用户，安装器界面也看不见。
 			writeError(w, http.StatusConflict, "服务模式下此动作需要用户会话，请在远端本机命令行执行: rsagent deploy "+action)
 			return
-		case deploy.ActionServiceRemove, deploy.ActionServiceStop:
+		case deploy.ActionServiceRemove, deploy.ActionServiceStop, deploy.ActionServiceRestart:
 			// 动作会结束本进程，交给独立子进程执行，先回复界面。
-			s.deps.Log.Info("服务将由子进程"+map[string]string{deploy.ActionServiceRemove: "卸载", deploy.ActionServiceStop: "停止"}[action], "by", by)
+			s.deps.Log.Info("服务将由子进程"+map[string]string{deploy.ActionServiceRemove: "卸载", deploy.ActionServiceStop: "停止", deploy.ActionServiceRestart: "重启"}[action], "by", by)
 			if err := deploy.ExecuteDetached(opts, action); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			msg := "服务将在几秒内停止。"
-			if action == deploy.ActionServiceRemove {
+			switch action {
+			case deploy.ActionServiceRemove:
 				msg = "服务将在几秒内停止并卸载。"
+			case deploy.ActionServiceRestart:
+				msg = "服务将在几秒内重启。"
 			}
 			msg += "远端托盘程序会自动在本进程重新启动 core，界面稍后自动恢复。"
 			writeJSON(w, http.StatusAccepted, map[string]any{
