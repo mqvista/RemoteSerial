@@ -160,7 +160,7 @@ export interface DeployStatus {
   mode: string
   hasShell: boolean
   task: { supported: boolean; installed: boolean; runLevel?: string; command?: string }
-  service: { supported: boolean; installed: boolean; running: boolean; detail?: string }
+  service: { supported: boolean; installed: boolean; running: boolean; binary?: string; detail?: string }
   firewall: { supported: boolean; installed: boolean; udpPort: number }
   webview2: { supported: boolean; installed: boolean; version?: string }
   autoLogon: { supported: boolean; enabled: boolean; user?: string }

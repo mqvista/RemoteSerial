@@ -90,9 +90,10 @@ onMounted(load)
         </NSpace>
       </template>
       <NText depth="3" style="display: block; margin-bottom: 12px">
-        把 core 注册为系统服务，开机即运行，不依赖用户登录。适合不允许自动登录的站点。安装后托盘程序只负责界面，退出托盘不影响服务。
+        把 core 注册为系统服务，开机即运行，不依赖用户登录。适合不允许自动登录的站点。安装时会把程序复制到数据目录的 bin 下并用副本注册，更新程序后重新点一次安装。安装后托盘程序只负责界面，退出托盘不影响服务。
         <NText type="warning">需管理员</NText>
       </NText>
+      <NText v-if="st!.service.binary" depth="3" style="display: block; margin-bottom: 12px; font-size: 12px">服务程序：{{ st!.service.binary }}</NText>
       <NSpace>
         <NPopconfirm v-if="!st!.service.installed" @positive-click="run('service-install')">
           <template #trigger>

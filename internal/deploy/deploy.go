@@ -52,6 +52,7 @@ type ServiceStatus struct {
 	Supported bool   `json:"supported"`
 	Installed bool   `json:"installed"`
 	Running   bool   `json:"running"`
+	Binary    string `json:"binary,omitempty"` // 服务使用的程序副本
 	Detail    string `json:"detail,omitempty"`
 }
 

@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+	"golang.org/x/sys/windows/svc/mgr"
 )
 
 const (
@@ -171,6 +172,33 @@ func taskRemove() error {
 		return fmt.Errorf("schtasks 删除失败: %s", strings.TrimSpace(decodeConsole(out)))
 	}
 	return nil
+}
+
+// ---- 服务 ----
+
+// updateServiceBinPath 直接改已注册服务的可执行路径与参数，避免卸载后立刻重装
+// 碰到"服务已标记为删除"。
+func updateServiceBinPath(o Options) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(ServiceName)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	c, err := s.Config()
+	if err != nil {
+		return err
+	}
+	parts := []string{quoteArg(ServiceBinary(o))}
+	for _, a := range serviceArgs(o) {
+		parts = append(parts, quoteArg(a))
+	}
+	c.BinaryPathName = strings.Join(parts, " ")
+	return s.UpdateConfig(c)
 }
 
 // ---- 防火墙 ----

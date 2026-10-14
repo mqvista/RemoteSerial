@@ -32,3 +32,13 @@ func runAction(o Options, action string) error {
 func elevateAndWait(Options, string) error {
 	return errors.New("需要 root 权限：请用 sudo 运行 rsagent deploy <action>")
 }
+
+// updateServiceBinPath 在 systemd 上重写单元文件即可，没有删除延迟问题。
+func updateServiceBinPath(o Options) error {
+	svc, err := newControlService(o)
+	if err != nil {
+		return err
+	}
+	_ = svc.Uninstall()
+	return svc.Install()
+}

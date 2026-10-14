@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"rsagent/internal/app"
 	"rsagent/internal/buildinfo"
@@ -193,7 +194,7 @@ func cmdDeploy(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(deploy.GetStatus(dopts))
 	}
-	res := deploy.Result{Action: action, OK: true, Message: "完成"}
+	res := deploy.Result{Action: action, OK: true, Message: "完成", Time: time.Now()}
 	if err := deploy.Run(dopts, action); err != nil {
 		res.OK = false
 		res.Message = err.Error()
