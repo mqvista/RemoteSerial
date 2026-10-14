@@ -9,8 +9,8 @@
 1. 在 Tailscale 后台生成 auth key：reusable、pre-authorized、带 tag（如 `tag:serial-agent`）。带 tag 的节点不会因密钥过期掉线。
 2. 把 `rsagent-windows-amd64.exe` 复制到远端 PC，双击运行。托盘出现图标，窗口打开管理界面。
 3. 在"Tailscale"页输入 auth key 登录。登录状态会保存，重启后自动上线，auth key 本身不会保存。
-4. 在"串口桥接"页新增桥接：选串口、波特率、TCP 端口。
-5. 本地任意 tailnet 设备访问 `http://<节点名>/` 管理，或用 TCP 客户端连接 `<节点IP>:<TCP端口>` 收发串口数据。
+4. 在"串口桥接"页新增桥接：选串口、波特率、TCP 端口、模式（裸 TCP 或 RFC2217）。
+5. 本地任意 tailnet 设备访问 `http://<节点名>/` 管理，"终端"页直接在浏览器里看串口；或用 `rfc2217://<节点IP>:<端口>`、裸 TCP 连接。
 
 ACL 需要允许你的账号访问 tag 节点的 80 端口和桥接端口，模板见 `deploy/acl.example.json`。若两个 tag 节点之间也要互通（例如用 tsprobe 联调），ACL 还要放行 tag 到 tag。
 
