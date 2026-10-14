@@ -28,8 +28,9 @@ web:
 	rm -rf internal/web/dist/assets
 	cd web && npm run build
 
+# Windows 用 GUI 子系统，双击不弹控制台；非 ui 子命令在终端里会接回父进程的控制台
 windows:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-windows-amd64.exe ./cmd/rsagent
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS) -H windowsgui" -o dist/rsagent-windows-amd64.exe ./cmd/rsagent
 
 linux-arm64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-linux-arm64 ./cmd/rsagent
