@@ -41,9 +41,13 @@ func RunUI(ctx context.Context, o Options) error {
 
 	sh := shell.New(shell.Options{Listen: listen, DataDir: paths.DataDir, Mode: mode})
 	coreErr := make(chan error, 1)
+	coreCtx, cancelCore := context.WithCancel(ctx)
+	defer cancelCore()
 	if mode == "standalone" {
 		o.ShowUI = sh.Open
-		go func() { coreErr <- Run(ctx, o) }()
+		o.Mode = "standalone"
+		o.Handoff = cancelCore // 部署页安装服务后，本进程 core 退位，壳保留
+		go func() { coreErr <- Run(coreCtx, o) }()
 		if err := waitCore(ctx, listen, 15*time.Second, coreErr); err != nil {
 			return err
 		}

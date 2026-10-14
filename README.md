@@ -81,6 +81,7 @@ internal/tsnode    tsnet 节点封装
 internal/bridge    串口桥接
 internal/web       HTTP API、WebSocket 推送、内嵌前端
 internal/shell     托盘 + webview（Windows）
+internal/deploy    部署检测与动作：计划任务、服务、防火墙、WebView2、提权子进程
 tools/mkicon       图标生成
 web/               Vue 3 + Vite 前端
 deploy/            ACL 模板、部署辅助文件

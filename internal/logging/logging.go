@@ -15,15 +15,16 @@ import (
 // Options 是日志初始化参数。
 type Options struct {
 	Dir      string     // 日志文件目录
-	Level    slog.Level // 最低级别
+	Level    slog.Level // 初始最低级别
 	Console  bool       // 同时输出到标准错误
 	RingSize int        // 内存环容量，0 取默认 1000
 }
 
-// Logger 把 slog.Logger 和内存环绑在一起。
+// Logger 把 slog.Logger、内存环和可运行时调整的级别绑在一起。
 type Logger struct {
 	*slog.Logger
 	Ring   *Ring
+	Level  *slog.LevelVar
 	closer io.Closer
 }
 
@@ -39,18 +40,30 @@ func Setup(o Options) (*Logger, error) {
 		MaxAge:     30,
 		LocalTime:  true,
 	}
+	lv := &slog.LevelVar{}
+	lv.Set(o.Level)
 	ring := NewRing(o.RingSize)
-	opts := &slog.HandlerOptions{Level: o.Level}
+	opts := &slog.HandlerOptions{Level: lv}
 	hs := []slog.Handler{
 		slog.NewTextHandler(file, opts),
-		&ringHandler{ring: ring, level: o.Level},
+		&ringHandler{ring: ring, level: lv},
 	}
 	if o.Console {
 		hs = append(hs, slog.NewTextHandler(os.Stderr, opts))
 	}
 	l := slog.New(multiHandler{hs})
 	slog.SetDefault(l)
-	return &Logger{Logger: l, Ring: ring, closer: file}, nil
+	return &Logger{Logger: l, Ring: ring, Level: lv, closer: file}, nil
+}
+
+// SetLevel 运行时调整级别。
+func (l *Logger) SetLevel(s string) error {
+	lvl, err := ParseLevel(s)
+	if err != nil {
+		return err
+	}
+	l.Level.Set(lvl)
+	return nil
 }
 
 // Close 关闭日志文件。

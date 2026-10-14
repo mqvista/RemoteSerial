@@ -19,6 +19,8 @@ func (s *Server) routes() {
 	api.HandleFunc("GET /api/version", s.handleVersion)
 	api.HandleFunc("GET /api/logs", s.handleLogs)
 	api.HandleFunc("GET /api/settings", s.handleSettingsGet)
+	api.HandleFunc("PUT /api/settings", s.handleSettingsPut)
+	api.HandleFunc("GET /api/network/interfaces", s.handleInterfaces)
 
 	api.HandleFunc("GET /api/tailscale/status", s.handleTailscaleStatus)
 	api.HandleFunc("POST /api/tailscale/login", s.handleTailscaleLogin)
@@ -35,6 +37,8 @@ func (s *Server) routes() {
 	api.HandleFunc("POST /api/bridges/{id}/{action}", s.handleBridgeAction)
 
 	api.HandleFunc("POST /api/ui/show", s.handleUIShow)
+	api.HandleFunc("GET /api/deploy/status", s.handleDeployStatus)
+	api.HandleFunc("POST /api/deploy/{action}", s.handleDeployAction)
 
 	api.HandleFunc("GET /ws/events", s.handleEvents)
 

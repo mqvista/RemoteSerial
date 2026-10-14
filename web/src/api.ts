@@ -119,6 +119,71 @@ export interface RouteStatus {
   approved: string[]
 }
 
+export interface InterfaceInfo {
+  name: string
+  ip: string
+  cidr: string
+  hidden: boolean
+}
+
+export interface Config {
+  version: number
+  listen: string
+  logLevel: string
+  tailscale: { hostname: string; controlURL: string; udpPort: number; webPort: number; advertiseRoutes: string[] }
+  access: { allowedLogins: string[] }
+  bridges: BridgeConfig[]
+}
+
+export interface SettingsUpdate {
+  logLevel?: string
+  allowedLogins?: string[]
+  listen?: string
+  webPort?: number
+  udpPort?: number
+  hostname?: string
+  controlURL?: string
+}
+
+export interface SettingsResponse {
+  config: Config
+  restartRequired: boolean
+  applied: string[]
+  pending: string[]
+}
+
+export interface DeployStatus {
+  os: string
+  elevated: boolean
+  exePath: string
+  dataDir: string
+  mode: string
+  hasShell: boolean
+  task: { supported: boolean; installed: boolean; runLevel?: string; command?: string }
+  service: { supported: boolean; installed: boolean; running: boolean; detail?: string }
+  firewall: { supported: boolean; installed: boolean; udpPort: number }
+  webview2: { supported: boolean; installed: boolean; version?: string }
+  autoLogon: { supported: boolean; enabled: boolean; user?: string }
+}
+
+export interface DeployResult {
+  action: string
+  ok: boolean
+  message: string
+  time: string
+}
+
+export type DeployAction =
+  | 'task-install'
+  | 'task-remove'
+  | 'service-install'
+  | 'service-remove'
+  | 'service-start'
+  | 'service-stop'
+  | 'firewall-add'
+  | 'firewall-remove'
+  | 'webview2-install'
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { cache: 'no-store', ...init })
   if (!r.ok) {
@@ -141,7 +206,16 @@ function json(method: string, body: unknown): RequestInit {
 export const api = {
   status: () => request<Status>('/api/status'),
   logs: (n = 500, level = 'debug') => request<{ entries: LogEntry[] }>(`/api/logs?n=${n}&level=${encodeURIComponent(level)}`),
-  settings: () => request<unknown>('/api/settings'),
+  settings: () => request<Config>('/api/settings'),
+  saveSettings: (u: SettingsUpdate) => request<SettingsResponse>('/api/settings', json('PUT', u)),
+  interfaces: () => request<{ interfaces: InterfaceInfo[] }>('/api/network/interfaces'),
+  deployStatus: () => request<DeployStatus>('/api/deploy/status'),
+  deployAction: async (action: DeployAction) => {
+    const r = await fetch(`/api/deploy/${action}`, { method: 'POST', cache: 'no-store' })
+    const body = (await r.json()) as { result: DeployResult; status: DeployStatus; error?: string }
+    if (!r.ok && !body.result) throw new Error(body.error ?? `${r.status}`)
+    return body
+  },
 
   tailscaleStatus: () => request<TailscaleSnapshot>('/api/tailscale/status'),
   tailscaleLogin: (body: { authKey: string; hostname: string; controlURL: string }) =>

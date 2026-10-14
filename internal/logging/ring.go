@@ -72,12 +72,12 @@ func (r *Ring) Last(n int, min slog.Level) []Entry {
 // ringHandler 把 slog 记录写入 Ring。
 type ringHandler struct {
 	ring  *Ring
-	level slog.Level
+	level slog.Leveler
 	attrs []slog.Attr
 	group string
 }
 
-func (h *ringHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
+func (h *ringHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level.Level() }
 
 func (h *ringHandler) Handle(_ context.Context, rec slog.Record) error {
 	var sb strings.Builder

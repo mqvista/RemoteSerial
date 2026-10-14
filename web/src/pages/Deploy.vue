@@ -1,0 +1,150 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NPopconfirm, NSpace, NTag, NText, useMessage } from 'naive-ui'
+import { api } from '../api'
+import type { DeployAction, DeployStatus } from '../api'
+import { useStatus } from '../status'
+
+const { status } = useStatus()
+const message = useMessage()
+
+const st = ref<DeployStatus | null>(null)
+const busy = ref<string | null>(null)
+const lastMessage = ref('')
+
+const isWindows = computed(() => st.value?.os === 'windows')
+const isLocal = computed(() => status.value?.source === 'local')
+const needsUAC = computed(() => !!st.value && !st.value.elevated)
+
+async function load() {
+  try {
+    st.value = await api.deployStatus()
+  } catch (e) {
+    message.error(String(e))
+  }
+}
+
+async function run(action: DeployAction) {
+  busy.value = action
+  lastMessage.value = ''
+  try {
+    const r = await api.deployAction(action)
+    lastMessage.value = r.result.message
+    if (r.result.ok) message.success(r.result.message || '完成')
+    else message.error(r.result.message || '失败')
+    st.value = { ...r.status, mode: st.value?.mode ?? '', hasShell: st.value?.hasShell ?? false }
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    busy.value = null
+    load()
+  }
+}
+
+function tag(ok: boolean, yes = '已安装', no = '未安装') {
+  return { type: ok ? ('success' as const) : ('default' as const), label: ok ? yes : no }
+}
+
+onMounted(load)
+</script>
+
+<template>
+  <NSpace vertical :size="16">
+    <NAlert v-if="st && !isWindows" type="info">当前为 {{ st.os }}，桌面壳与计划任务仅 Windows 支持。Linux 站点用"系统服务"把 core 注册为 systemd 服务。</NAlert>
+    <NAlert v-if="needsUAC && isWindows" type="warning">
+      当前进程未提权。标有"需管理员"的动作会弹出 UAC 确认框，确认框出现在远端的屏幕上。远端无人时，请先在现场安装带"最高权限"的开机自启任务，之后程序本身就是提权状态。
+    </NAlert>
+    <NAlert v-if="!isLocal" type="info">你正通过 tailnet 远程操作。安装服务会让远端当前进程的 core 退位给服务，连接会短暂中断几秒。</NAlert>
+
+    <NCard v-if="st" title="运行环境">
+      <NDescriptions :column="2" label-placement="left" size="small" bordered>
+        <NDescriptionsItem label="系统">{{ st.os }}</NDescriptionsItem>
+        <NDescriptionsItem label="运行模式">{{ st.mode }}{{ st.hasShell ? '（带托盘）' : '' }}</NDescriptionsItem>
+        <NDescriptionsItem label="管理员权限">
+          <NTag size="small" :type="st.elevated ? 'success' : 'default'">{{ st.elevated ? '已提权' : '未提权' }}</NTag>
+        </NDescriptionsItem>
+        <NDescriptionsItem label="程序路径">{{ st.exePath }}</NDescriptionsItem>
+      </NDescriptions>
+    </NCard>
+
+    <NCard v-if="st?.task.supported" title="开机自启（计划任务）">
+      <template #header-extra>
+        <NTag size="small" :type="tag(st!.task.installed).type">{{ tag(st!.task.installed).label }}</NTag>
+      </template>
+      <NText depth="3" style="display: block; margin-bottom: 12px">
+        用户登录时启动，每 5 分钟检查一次，已在运行则不重复启动，兼作崩溃后自动拉起。配合自动登录实现无人值守。
+        <template v-if="st!.task.installed">当前权限级别：{{ st!.task.runLevel === 'Highest' ? '最高权限' : '普通权限' }}。</template>
+        <template v-if="!st!.elevated">现在安装会以普通权限注册；若需最高权限，请以管理员身份运行程序后再安装。</template>
+      </NText>
+      <NSpace>
+        <NButton type="primary" :loading="busy === 'task-install'" @click="run('task-install')">{{ st!.task.installed ? '重新安装' : '安装' }}</NButton>
+        <NButton v-if="st!.task.installed" :loading="busy === 'task-remove'" @click="run('task-remove')">卸载</NButton>
+      </NSpace>
+    </NCard>
+
+    <NCard v-if="st?.service.supported" title="系统服务">
+      <template #header-extra>
+        <NSpace>
+          <NTag size="small" :type="tag(st!.service.installed).type">{{ tag(st!.service.installed).label }}</NTag>
+          <NTag v-if="st!.service.installed" size="small" :type="st!.service.running ? 'success' : 'warning'">{{ st!.service.running ? '运行中' : '已停止' }}</NTag>
+        </NSpace>
+      </template>
+      <NText depth="3" style="display: block; margin-bottom: 12px">
+        把 core 注册为系统服务，开机即运行，不依赖用户登录。适合不允许自动登录的站点。安装后托盘程序只负责界面，退出托盘不影响服务。
+        <NText type="warning">需管理员</NText>
+      </NText>
+      <NSpace>
+        <NPopconfirm v-if="!st!.service.installed" @positive-click="run('service-install')">
+          <template #trigger>
+            <NButton type="primary" :loading="busy === 'service-install'">安装并启动</NButton>
+          </template>
+          安装服务后本进程的 core 会停止，由服务接管。继续？
+        </NPopconfirm>
+        <template v-else>
+          <NButton v-if="!st!.service.running" type="primary" :loading="busy === 'service-start'" @click="run('service-start')">启动</NButton>
+          <NButton v-else :loading="busy === 'service-stop'" @click="run('service-stop')">停止</NButton>
+          <NPopconfirm @positive-click="run('service-remove')">
+            <template #trigger>
+              <NButton type="error" ghost :loading="busy === 'service-remove'">卸载</NButton>
+            </template>
+            卸载服务后需要重新双击程序运行。继续？
+          </NPopconfirm>
+        </template>
+      </NSpace>
+      <NText v-if="st!.service.detail" type="error" style="display: block; margin-top: 8px; font-size: 12px">{{ st!.service.detail }}</NText>
+    </NCard>
+
+    <NCard v-if="st?.firewall.supported" title="防火墙规则">
+      <template #header-extra>
+        <NTag size="small" :type="tag(st!.firewall.installed).type">{{ tag(st!.firewall.installed).label }}</NTag>
+      </template>
+      <NText depth="3" style="display: block; margin-bottom: 12px">
+        放行 UDP {{ st!.firewall.udpPort }} 入站，提高与本地设备直连的成功率。不加也能通过中转工作。<NText type="warning">需管理员</NText>
+      </NText>
+      <NSpace>
+        <NButton type="primary" :loading="busy === 'firewall-add'" @click="run('firewall-add')">{{ st!.firewall.installed ? '重新添加' : '添加' }}</NButton>
+        <NButton v-if="st!.firewall.installed" :loading="busy === 'firewall-remove'" @click="run('firewall-remove')">删除</NButton>
+      </NSpace>
+    </NCard>
+
+    <NCard v-if="st?.webview2.supported" title="WebView2 运行时">
+      <template #header-extra>
+        <NTag size="small" :type="tag(st!.webview2.installed).type">{{ st!.webview2.installed ? `已安装 ${st!.webview2.version}` : '未安装' }}</NTag>
+      </template>
+      <NText depth="3" style="display: block; margin-bottom: 12px">窗口模式依赖 WebView2。缺失时程序会改用系统浏览器打开界面。安装会下载微软 Evergreen 引导程序并运行，引导程序自行请求提权。</NText>
+      <NButton v-if="!st!.webview2.installed" type="primary" :loading="busy === 'webview2-install'" @click="run('webview2-install')">下载并安装</NButton>
+    </NCard>
+
+    <NCard v-if="st?.autoLogon.supported" title="自动登录">
+      <template #header-extra>
+        <NTag size="small" :type="st!.autoLogon.enabled ? 'success' : 'default'">{{ st!.autoLogon.enabled ? `已启用：${st!.autoLogon.user}` : '未启用' }}</NTag>
+      </template>
+      <NText depth="3">
+        计划任务路线需要远端重启后自动回到桌面。请用微软 Sysinternals 的 Autologon 工具配置，它把密码存为 LSA secret 而不是注册表明文。本程序不代存密码。
+        现场有人经过时，再加一个登录后自动锁屏的计划任务，锁屏不影响托盘程序运行。
+      </NText>
+    </NCard>
+
+    <NText v-if="lastMessage" depth="3">最近结果：{{ lastMessage }}</NText>
+  </NSpace>
+</template>

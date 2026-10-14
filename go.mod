@@ -6,6 +6,7 @@ require (
 	fyne.io/systray v1.12.2
 	github.com/coder/websocket v1.8.15
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
+	github.com/kardianos/service v1.3.0
 	go.bug.st/serial v1.8.0
 	golang.org/x/sys v0.48.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1

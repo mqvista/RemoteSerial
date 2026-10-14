@@ -42,16 +42,18 @@ func SourceOf(r *http.Request) Source {
 
 // Deps 是 web 层依赖的运行时对象。
 type Deps struct {
-	Log       *slog.Logger
-	Ring      *logging.Ring
-	Config    *config.Config
-	Paths     config.Paths
-	Node      *tsnode.Node
-	Bridges   *bridge.Manager
-	Hub       *Hub
-	ShowUI    func() // 非空表示本进程带桌面壳，POST /api/ui/show 会唤起窗口
-	StartedAt time.Time
-	Mode      string // standalone | service | shell
+	Log         *slog.Logger
+	Ring        *logging.Ring
+	Config      *config.Config
+	Paths       config.Paths
+	Node        *tsnode.Node
+	Bridges     *bridge.Manager
+	Hub         *Hub
+	ShowUI      func() // 非空表示本进程带桌面壳，POST /api/ui/show 会唤起窗口
+	SetLogLevel func(string) error
+	Handoff     func() // 安装服务成功后停止本进程 core，standalone 模式才有
+	StartedAt   time.Time
+	Mode        string // standalone | service | shell
 }
 
 // Server 是 HTTP 管理界面。
