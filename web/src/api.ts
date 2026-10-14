@@ -12,6 +12,7 @@ export interface TailscaleSnapshot {
   loginName?: string
   tags?: string[]
   keyExpiry?: string
+  homeRelay?: string
   message?: string
   since: string
 }
@@ -54,6 +55,7 @@ export interface BridgeStatus {
   state: string
   deviceOpen: boolean
   viewers: number
+  capture: CaptureStatus
   client?: string
   clientSince?: string
   fromDevice: number
@@ -124,6 +126,55 @@ export interface LogEntry {
 export interface RouteStatus {
   advertised: string[]
   approved: string[]
+}
+
+export interface PingResult {
+  type: string
+  ok: boolean
+  latencyMs: number
+  endpoint?: string
+  derp?: string
+  peerRelay?: string
+  nodeName?: string
+  err?: string
+}
+
+export interface RegionLatency {
+  id: number
+  code: string
+  name: string
+  latencyMs: number
+  preferred: boolean
+}
+
+export interface NetcheckReport {
+  udp: boolean
+  ipv4: boolean
+  ipv6: boolean
+  hardNAT?: boolean
+  upnp?: boolean
+  pmp?: boolean
+  pcp?: boolean
+  captivePortal?: boolean
+  globalV4?: string
+  globalV6?: string
+  preferredDERP?: string
+  regions: RegionLatency[]
+  tookMs: number
+}
+
+export interface CaptureStatus {
+  active: boolean
+  base?: string
+  started?: string
+  rxBytes: number
+  txBytes: number
+}
+
+export interface CaptureFile {
+  name: string
+  size: number
+  modTime: string
 }
 
 export interface InterfaceInfo {
@@ -231,6 +282,12 @@ export const api = {
   tailscaleStop: () => request<TailscaleSnapshot>('/api/tailscale/stop', { method: 'POST' }),
   tailscaleLogout: () => request<TailscaleSnapshot>('/api/tailscale/logout', { method: 'POST' }),
   tailscalePeers: () => request<{ peers: Peer[] }>('/api/tailscale/peers'),
+  ping: (ip: string) => request<{ results: PingResult[] }>('/api/tailscale/ping', json('POST', { ip })),
+  netcheck: () => request<NetcheckReport>('/api/tailscale/netcheck'),
+  captureStart: (id: string) => request<{ base: string; capture: CaptureStatus }>(`/api/bridges/${encodeURIComponent(id)}/capture/start`, { method: 'POST' }),
+  captureStop: (id: string) => request<{ capture: CaptureStatus }>(`/api/bridges/${encodeURIComponent(id)}/capture/stop`, { method: 'POST' }),
+  captures: () => request<{ files: CaptureFile[] }>('/api/captures'),
+  deleteCapture: (name: string) => request<unknown>(`/api/captures/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   routes: () => request<RouteStatus>('/api/tailscale/routes'),
   setRoutes: (routes: string[]) => request<RouteStatus>('/api/tailscale/routes', json('PUT', { routes })),
 

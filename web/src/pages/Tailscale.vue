@@ -18,7 +18,7 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { api, formatBytes } from '../api'
-import type { Peer, TailscaleSnapshot } from '../api'
+import type { NetcheckReport, Peer, PingResult, TailscaleSnapshot } from '../api'
 import { useStatus } from '../status'
 
 const { status } = useStatus()
@@ -31,6 +31,50 @@ const form = ref({ authKey: '', hostname: '', controlURL: '' })
 const busy = ref(false)
 const peers = ref<Peer[]>([])
 let peerTimer: number | undefined
+
+const netcheck = ref<NetcheckReport | null>(null)
+const netcheckBusy = ref(false)
+const pingBusy = ref<string | null>(null)
+const pingResults = ref<Record<string, PingResult[]>>({})
+
+async function runNetcheck() {
+  netcheckBusy.value = true
+  try {
+    netcheck.value = await api.netcheck()
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    netcheckBusy.value = false
+  }
+}
+
+async function pingPeer(ip: string) {
+  pingBusy.value = ip
+  try {
+    pingResults.value = { ...pingResults.value, [ip]: (await api.ping(ip)).results }
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    pingBusy.value = null
+  }
+}
+
+function pingSummary(ip: string): string {
+  const rs = pingResults.value[ip]
+  if (!rs) return ''
+  return rs
+    .map((r) => {
+      if (!r.ok) return `${r.type}: ${r.err || '失败'}`
+      const via = r.endpoint ? `直连 ${r.endpoint}` : r.peerRelay ? `peer relay ${r.peerRelay}` : r.derp ? `中转 ${r.derp}` : ''
+      return `${r.type} ${r.latencyMs.toFixed(1)}ms ${via}`
+    })
+    .join(' · ')
+}
+
+function yesNo(v?: boolean) {
+  if (v === undefined) return '未知'
+  return v ? '是' : '否'
+}
 
 const stateType = computed(() => {
   switch (snap.value?.state) {
@@ -144,6 +188,15 @@ const peerColumns: DataTableColumns<Peer> = [
     },
   },
   { title: '收/发', key: 'rx', width: 150, render: (r) => `${formatBytes(r.rxBytes)} / ${formatBytes(r.txBytes)}` },
+  {
+    title: '测路径',
+    key: 'ping',
+    render: (r) =>
+      h('div', {}, [
+        h(NButton, { size: 'tiny', disabled: !r.online || pingBusy.value === r.ip, loading: pingBusy.value === r.ip, onClick: () => pingPeer(r.ip) }, { default: () => 'ping' }),
+        pingSummary(r.ip) ? h(NText, { depth: 3, style: 'margin-left:8px;font-size:12px' }, { default: () => pingSummary(r.ip) }) : null,
+      ]),
+  },
 ]
 
 onMounted(() => {
@@ -217,7 +270,46 @@ onUnmounted(() => {
     </NCard>
 
     <NCard v-if="snap?.state === 'Running'" title="对端">
+      <template #header-extra>
+        <NText depth="3" style="font-size: 12px">本节点首选 DERP：{{ snap?.homeRelay || '-' }}</NText>
+      </template>
       <NDataTable :columns="peerColumns" :data="peers" size="small" :bordered="false" :max-height="360" />
+    </NCard>
+
+    <NCard v-if="snap?.state === 'Running'" title="网络诊断">
+      <template #header-extra>
+        <NButton size="small" :loading="netcheckBusy" @click="runNetcheck">运行 netcheck</NButton>
+      </template>
+      <NText v-if="!netcheck" depth="3">检测 UDP 可达性、NAT 类型、端口映射和到各 DERP 的延迟，耗时约 5 到 10 秒。</NText>
+      <template v-else>
+        <NDescriptions :column="3" label-placement="left" size="small" bordered>
+          <NDescriptionsItem label="UDP">
+            <NTag size="small" :type="netcheck.udp ? 'success' : 'error'">{{ netcheck.udp ? '可用' : '不可用' }}</NTag>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="困难 NAT">
+            <NTag size="small" :type="netcheck.hardNAT ? 'warning' : 'success'">{{ yesNo(netcheck.hardNAT) }}</NTag>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="IPv4 / IPv6">{{ yesNo(netcheck.ipv4) }} / {{ yesNo(netcheck.ipv6) }}</NDescriptionsItem>
+          <NDescriptionsItem label="UPnP / PMP / PCP">{{ yesNo(netcheck.upnp) }} / {{ yesNo(netcheck.pmp) }} / {{ yesNo(netcheck.pcp) }}</NDescriptionsItem>
+          <NDescriptionsItem label="公网出口">{{ netcheck.globalV4 || '-' }}</NDescriptionsItem>
+          <NDescriptionsItem label="首选 DERP">{{ netcheck.preferredDERP || '-' }}</NDescriptionsItem>
+        </NDescriptions>
+        <NText v-if="netcheck.hardNAT" type="warning" style="display: block; margin-top: 8px; font-size: 12px">
+          映射随目标变化（对称 NAT），与同样处于困难 NAT 后的设备很难直连，会走中转。可在自有服务器上部署 peer relay 或 DERP 改善。
+        </NText>
+        <NDataTable
+          style="margin-top: 12px"
+          :columns="[
+            { title: 'DERP 区域', key: 'name', render: (r: any) => `${r.name} (${r.code})` },
+            { title: '延迟', key: 'latencyMs', width: 120, render: (r: any) => `${r.latencyMs.toFixed(1)} ms` },
+            { title: '', key: 'preferred', width: 80, render: (r: any) => (r.preferred ? h(NTag, { size: 'small', type: 'success' }, { default: () => '首选' }) : '') },
+          ]"
+          :data="netcheck.regions"
+          size="small"
+          :bordered="false"
+        />
+        <NText depth="3" style="font-size: 12px">耗时 {{ netcheck.tookMs }} ms</NText>
+      </template>
     </NCard>
   </NSpace>
 </template>

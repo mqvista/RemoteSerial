@@ -20,7 +20,7 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns, SelectOption } from 'naive-ui'
 import { api, BAUD_RATES, formatBytes } from '../api'
-import type { BridgeConfig, BridgeStatus, SerialPort } from '../api'
+import type { BridgeConfig, BridgeStatus, CaptureFile, SerialPort } from '../api'
 import { useStatus } from '../status'
 
 const { status } = useStatus()
@@ -28,6 +28,63 @@ const message = useMessage()
 
 const configs = ref<BridgeConfig[]>([])
 const ports = ref<SerialPort[]>([])
+const captures = ref<CaptureFile[]>([])
+
+async function loadCaptures() {
+  try {
+    captures.value = (await api.captures()).files
+  } catch {
+    // 忽略
+  }
+}
+
+async function toggleCapture(id: string) {
+  const s = statusById.value[id]
+  busy.value = true
+  try {
+    if (s?.capture?.active) {
+      await api.captureStop(id)
+      message.success('已停止录制')
+    } else {
+      const r = await api.captureStart(id)
+      message.success(`开始录制：${r.base}`)
+    }
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    busy.value = false
+    loadCaptures()
+  }
+}
+
+async function deleteCapture(name: string) {
+  try {
+    await api.deleteCapture(name)
+    message.success('已删除')
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    loadCaptures()
+  }
+}
+
+const captureColumns: DataTableColumns<CaptureFile> = [
+  { title: '文件', key: 'name' },
+  { title: '大小', key: 'size', width: 110, render: (f) => formatBytes(f.size) },
+  { title: '时间', key: 'modTime', width: 170, render: (f) => new Date(f.modTime).toLocaleString('zh-CN', { hour12: false }) },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 160,
+    render: (f) =>
+      h(NSpace, { size: 4 }, {
+        default: () => [
+          h('a', { href: `/api/captures/${encodeURIComponent(f.name)}`, download: f.name, style: 'font-size:12px' }, '下载'),
+          h(NPopconfirm, { onPositiveClick: () => deleteCapture(f.name) }, { trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => '删除' }), default: () => '删除此文件？' }),
+        ],
+      }),
+  },
+]
 const busy = ref(false)
 const showEditor = ref(false)
 const editing = ref<BridgeConfig | null>(null)
@@ -263,7 +320,7 @@ const columns: DataTableColumns<BridgeConfig> = [
   {
     title: '操作',
     key: 'actions',
-    width: 260,
+    width: 330,
     render: (c) => {
       const s = statusById.value[c.id]
       return h(NSpace, { size: 4 }, {
@@ -272,6 +329,7 @@ const columns: DataTableColumns<BridgeConfig> = [
             ? h(NButton, { size: 'tiny', onClick: () => action(c.id, 'stop') }, { default: () => '停止' })
             : h(NButton, { size: 'tiny', type: 'primary', onClick: () => action(c.id, 'start') }, { default: () => '启动' }),
           h(NButton, { size: 'tiny', disabled: !s?.client, onClick: () => action(c.id, 'kick') }, { default: () => '踢掉' }),
+          h(NButton, { size: 'tiny', type: s?.capture?.active ? 'warning' : 'default', disabled: !c.enabled, onClick: () => toggleCapture(c.id) }, { default: () => (s?.capture?.active ? '停止录制' : '录制') }),
           h(NButton, { size: 'tiny', onClick: () => openEdit(c) }, { default: () => '编辑' }),
           h(NPopconfirm, { onPositiveClick: () => remove(c.id) }, { trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => '删除' }), default: () => '删除此桥接？' }),
         ],
@@ -283,6 +341,7 @@ const columns: DataTableColumns<BridgeConfig> = [
 onMounted(() => {
   load()
   loadPorts()
+  loadCaptures()
 })
 </script>
 
@@ -303,6 +362,16 @@ onMounted(() => {
           <code>rfc2217://{{ status?.tailscale.ip || '100.x.y.z' }}:{{ configs[0].tcpPort }}</code>（pyserial、esptool、PlatformIO），需要 COMx 的工具用 com0com + hub4com 映射。
         </NText>
       </template>
+    </NCard>
+
+    <NCard title="录制文件">
+      <template #header-extra>
+        <NButton size="small" @click="loadCaptures">刷新</NButton>
+      </template>
+      <NText depth="3" style="display: block; margin-bottom: 8px; font-size: 12px">
+        录制把设备输出写入 .rx.bin，写入设备的数据写入 .tx.bin，原始字节，可用 hex 工具打开。文件在数据目录 logs 下。
+      </NText>
+      <NDataTable :columns="captureColumns" :data="captures" size="small" :bordered="false" />
     </NCard>
 
     <NCard title="本机串口">

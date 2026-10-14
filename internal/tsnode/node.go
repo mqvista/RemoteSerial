@@ -59,8 +59,9 @@ type Snapshot struct {
 	LoginName  string     `json:"loginName,omitempty"`
 	Tags       []string   `json:"tags,omitempty"`
 	KeyExpiry  *time.Time `json:"keyExpiry,omitempty"`
-	Message    string     `json:"message,omitempty"` // 最近一次错误或提示
-	Since      time.Time  `json:"since"`             // 进入当前状态的时间
+	HomeRelay  string     `json:"homeRelay,omitempty"` // 当前首选 DERP 区域代码
+	Message    string     `json:"message,omitempty"`   // 最近一次错误或提示
+	Since      time.Time  `json:"since"`               // 进入当前状态的时间
 }
 
 // Peer 是 tailnet 中一个对端的摘要，用于诊断直连还是中转。
@@ -540,6 +541,7 @@ func (n *Node) refreshSelf(ctx context.Context, lc *local.Client) {
 	if st.Self != nil {
 		n.snap.DNSName = strings.TrimSuffix(st.Self.DNSName, ".")
 		n.snap.KeyExpiry = st.Self.KeyExpiry
+		n.snap.HomeRelay = st.Self.Relay
 		n.snap.Tags = nil
 		if st.Self.Tags != nil {
 			n.snap.Tags = st.Self.Tags.AsSlice()

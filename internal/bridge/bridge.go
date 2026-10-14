@@ -36,27 +36,28 @@ const (
 
 // Status 是桥接状态快照。
 type Status struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Port         string    `json:"port"`         // 配置的串口
-	ResolvedPort string    `json:"resolvedPort"` // 实际打开的串口
-	TCPPort      int       `json:"tcpPort"`
-	LocalPort    int       `json:"localPort,omitempty"`
-	Mode         string    `json:"mode"`
-	Baud         int       `json:"baud"`
-	Active       string    `json:"active"`   // 实际生效的参数，如 115200 8N1
-	ParamsBy     string    `json:"paramsBy"` // config | client
-	DTR          bool      `json:"dtr"`
-	RTS          bool      `json:"rts"`
-	Enabled      bool      `json:"enabled"`
-	State        State     `json:"state"`
-	DeviceOpen   bool      `json:"deviceOpen"`
-	Client       string    `json:"client,omitempty"`
-	ClientSince  time.Time `json:"clientSince,omitzero"`
-	FromDevice   int64     `json:"fromDevice"` // 串口 → TCP 字节数
-	ToDevice     int64     `json:"toDevice"`   // TCP → 串口 字节数
-	Viewers      int       `json:"viewers"`    // 网页终端订阅数
-	LastError    string    `json:"lastError,omitempty"`
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	Port         string        `json:"port"`         // 配置的串口
+	ResolvedPort string        `json:"resolvedPort"` // 实际打开的串口
+	TCPPort      int           `json:"tcpPort"`
+	LocalPort    int           `json:"localPort,omitempty"`
+	Mode         string        `json:"mode"`
+	Baud         int           `json:"baud"`
+	Active       string        `json:"active"`   // 实际生效的参数，如 115200 8N1
+	ParamsBy     string        `json:"paramsBy"` // config | client
+	DTR          bool          `json:"dtr"`
+	RTS          bool          `json:"rts"`
+	Enabled      bool          `json:"enabled"`
+	State        State         `json:"state"`
+	DeviceOpen   bool          `json:"deviceOpen"`
+	Client       string        `json:"client,omitempty"`
+	ClientSince  time.Time     `json:"clientSince,omitzero"`
+	FromDevice   int64         `json:"fromDevice"` // 串口 → TCP 字节数
+	ToDevice     int64         `json:"toDevice"`   // TCP → 串口 字节数
+	Viewers      int           `json:"viewers"`    // 网页终端订阅数
+	Capture      CaptureStatus `json:"capture"`
+	LastError    string        `json:"lastError,omitempty"`
 }
 
 // ListenFunc 创建 TCP 监听，由 tsnet 节点提供。
@@ -97,6 +98,7 @@ type Bridge struct {
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	subs         map[chan []byte]struct{}
+	cap          *capture
 
 	fromDevice atomic.Int64
 	toDevice   atomic.Int64
@@ -133,9 +135,11 @@ func configMode(cfg config.Bridge) rfc2217.Mode {
 
 // Status 返回状态快照。
 func (b *Bridge) Status() Status {
+	capSt := b.Capture()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return Status{
+		Capture:      capSt,
 		ID:           b.cfg.ID,
 		Name:         b.cfg.Name,
 		Port:         b.cfg.Port,
@@ -188,6 +192,9 @@ func (b *Bridge) WriteDevice(p []byte) error {
 	}
 	n, err := port.Write(p)
 	b.toDevice.Add(int64(n))
+	if n > 0 {
+		b.captureTx(p[:n])
+	}
 	return err
 }
 
@@ -235,6 +242,7 @@ func (b *Bridge) stop(next State) {
 	b.dropClient("桥接停止")
 	b.closePort()
 	b.wg.Wait()
+	_ = b.StopCapture()
 	b.mu.Lock()
 	b.setStateLocked(next, "")
 	b.mu.Unlock()
@@ -378,6 +386,7 @@ func (b *Bridge) readPort(ctx context.Context) {
 			data := buf[:n]
 			b.fromDevice.Add(int64(n))
 			b.recent.Write(data)
+			b.captureRx(data)
 			b.mu.Lock()
 			c := b.client
 			var subs []chan []byte
@@ -691,8 +700,10 @@ func (b *Bridge) serveClient(ctx context.Context, client io.ReadWriteCloser, nc 
 			p := b.port
 			b.mu.Unlock()
 			if p != nil {
-				if _, werr := p.Write(buf[:n]); werr != nil {
+				if wn, werr := p.Write(buf[:n]); werr != nil {
 					b.log.Debug("写入串口失败", "err", werr)
+				} else if wn > 0 {
+					b.captureTx(buf[:wn])
 				}
 			}
 		}

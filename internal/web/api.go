@@ -30,6 +30,14 @@ func (s *Server) routes() {
 	api.HandleFunc("GET /api/tailscale/peers", s.handleTailscalePeers)
 	api.HandleFunc("GET /api/tailscale/routes", s.handleTailscaleRoutesGet)
 	api.HandleFunc("PUT /api/tailscale/routes", s.handleTailscaleRoutesPut)
+	api.HandleFunc("POST /api/tailscale/ping", s.handleTailscalePing)
+	api.HandleFunc("GET /api/tailscale/netcheck", s.handleTailscaleNetcheck)
+
+	api.HandleFunc("POST /api/bridges/{id}/capture/start", s.handleCaptureStart)
+	api.HandleFunc("POST /api/bridges/{id}/capture/stop", s.handleCaptureStop)
+	api.HandleFunc("GET /api/captures", s.handleCapturesList)
+	api.HandleFunc("GET /api/captures/{name}", s.handleCaptureDownload)
+	api.HandleFunc("DELETE /api/captures/{name}", s.handleCaptureDelete)
 
 	api.HandleFunc("GET /api/serial/ports", s.handleSerialPorts)
 	api.HandleFunc("GET /api/bridges", s.handleBridgesGet)

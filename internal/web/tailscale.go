@@ -141,6 +141,34 @@ func (s *Server) handleTailscaleRoutesPut(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, rs)
 }
 
+// POST /api/tailscale/ping {"ip": "100.x.y.z"}
+func (s *Server) handleTailscalePing(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	res, err := s.deps.Node.Ping(r.Context(), req.IP)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": res})
+}
+
+// GET /api/tailscale/netcheck
+func (s *Server) handleTailscaleNetcheck(w http.ResponseWriter, r *http.Request) {
+	rep, err := s.deps.Node.Netcheck(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	s.deps.Log.Info("netcheck 完成", "udp", rep.UDP, "hardNAT", rep.HardNAT != nil && *rep.HardNAT, "preferredDERP", rep.PreferredDERP, "by", requesterLabel(r))
+	writeJSON(w, http.StatusOK, rep)
+}
+
 func requesterLabel(r *http.Request) string {
 	if id := IdentityOf(r); id != nil {
 		return id.LoginName + "@" + id.Node
