@@ -38,10 +38,12 @@ $ldflags = "-s -w " +
     "-X rsagent/internal/buildinfo.Commit=$commit " +
     "-X rsagent/internal/buildinfo.Date=$date"
 
+# The Windows release uses the GUI subsystem so double-clicking shows no console window;
+# non-ui subcommands re-attach to the parent console when run from a terminal.
 $matrix = @{
-    "windows"     = @{ GOOS = "windows"; GOARCH = "amd64"; Out = "rsagent-windows-amd64.exe" }
-    "linux-arm64" = @{ GOOS = "linux";   GOARCH = "arm64"; Out = "rsagent-linux-arm64" }
-    "linux-amd64" = @{ GOOS = "linux";   GOARCH = "amd64"; Out = "rsagent-linux-amd64" }
+    "windows"     = @{ GOOS = "windows"; GOARCH = "amd64"; Out = "rsagent-windows-amd64.exe"; Extra = "-H windowsgui" }
+    "linux-arm64" = @{ GOOS = "linux";   GOARCH = "arm64"; Out = "rsagent-linux-arm64";       Extra = "" }
+    "linux-amd64" = @{ GOOS = "linux";   GOARCH = "amd64"; Out = "rsagent-linux-amd64";       Extra = "" }
 }
 
 foreach ($t in $Targets) {
@@ -52,7 +54,7 @@ foreach ($t in $Targets) {
     $env:GOOS = $m.GOOS
     $env:GOARCH = $m.GOARCH
     $env:CGO_ENABLED = "0"
-    go build -trimpath -ldflags $ldflags -o $out ./cmd/rsagent
+    go build -trimpath -ldflags "$ldflags $($m.Extra)" -o $out ./cmd/rsagent
     if ($LASTEXITCODE -ne 0) { throw "go build failed for $t" }
 }
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue

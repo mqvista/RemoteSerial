@@ -7,73 +7,85 @@ import (
 	"strconv"
 	"time"
 
+	"rsagent/internal/bridge"
 	"rsagent/internal/buildinfo"
 	"rsagent/internal/logging"
+	"rsagent/internal/tsnode"
 )
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /api/status", s.handleStatus)
-	s.mux.HandleFunc("GET /api/version", s.handleVersion)
-	s.mux.HandleFunc("GET /api/logs", s.handleLogs)
-	s.mux.HandleFunc("GET /api/settings", s.handleSettingsGet)
-	s.mux.Handle("/", staticHandler())
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/status", s.handleStatus)
+	api.HandleFunc("GET /api/version", s.handleVersion)
+	api.HandleFunc("GET /api/logs", s.handleLogs)
+	api.HandleFunc("GET /api/settings", s.handleSettingsGet)
+
+	api.HandleFunc("GET /api/tailscale/status", s.handleTailscaleStatus)
+	api.HandleFunc("POST /api/tailscale/login", s.handleTailscaleLogin)
+	api.HandleFunc("POST /api/tailscale/start", s.handleTailscaleStart)
+	api.HandleFunc("POST /api/tailscale/stop", s.handleTailscaleStop)
+	api.HandleFunc("POST /api/tailscale/logout", s.handleTailscaleLogout)
+	api.HandleFunc("GET /api/tailscale/peers", s.handleTailscalePeers)
+	api.HandleFunc("GET /api/tailscale/routes", s.handleTailscaleRoutesGet)
+	api.HandleFunc("PUT /api/tailscale/routes", s.handleTailscaleRoutesPut)
+
+	api.HandleFunc("GET /api/serial/ports", s.handleSerialPorts)
+	api.HandleFunc("GET /api/bridges", s.handleBridgesGet)
+	api.HandleFunc("PUT /api/bridges", s.handleBridgesPut)
+	api.HandleFunc("POST /api/bridges/{id}/{action}", s.handleBridgeAction)
+
+	api.HandleFunc("POST /api/ui/show", s.handleUIShow)
+
+	api.HandleFunc("GET /ws/events", s.handleEvents)
+
+	s.mux.Handle("/api/", s.authMiddleware(api))
+	s.mux.Handle("/ws/", s.authMiddleware(api))
+	s.mux.Handle("/", s.authMiddleware(staticHandler()))
 }
 
-// StatusResponse 是 GET /api/status 的返回。
+// StatusResponse 是 GET /api/status 与事件推送共用的总览结构。
 type StatusResponse struct {
-	Version   string          `json:"version"`
-	Commit    string          `json:"commit"`
-	Mode      string          `json:"mode"`
-	UptimeSec int64           `json:"uptimeSec"`
-	DataDir   string          `json:"dataDir"`
-	Listen    string          `json:"listen"`
-	Source    Source          `json:"source"`
-	Tailscale TailscaleStatus `json:"tailscale"`
-	Bridges   []BridgeStatus  `json:"bridges"`
+	Version       string           `json:"version"`
+	Commit        string           `json:"commit"`
+	Mode          string           `json:"mode"`
+	UptimeSec     int64            `json:"uptimeSec"`
+	DataDir       string           `json:"dataDir"`
+	Listen        string           `json:"listen"`
+	Source        Source           `json:"source,omitempty"`
+	Identity      *tsnode.Identity `json:"identity,omitempty"`
+	AccessWarning bool             `json:"accessWarning"` // 白名单为空
+	Tailscale     tsnode.Snapshot  `json:"tailscale"`
+	WebPort       int              `json:"webPort"`
+	Bridges       []bridge.Status  `json:"bridges"`
 }
 
-// TailscaleStatus 是节点状态摘要。第 0 期只有 NotConfigured。
-type TailscaleStatus struct {
-	State    string `json:"state"` // NotConfigured | NeedsLogin | Starting | NeedsMachineAuth | Running | Stopped
-	Hostname string `json:"hostname"`
-	IP       string `json:"ip,omitempty"`
-	DNSName  string `json:"dnsName,omitempty"`
-}
-
-// BridgeStatus 是单个桥接的运行状态。第 0 期为空列表。
-type BridgeStatus struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Port      string `json:"port"`
-	TCPPort   int    `json:"tcpPort"`
-	State     string `json:"state"`
-	Client    string `json:"client,omitempty"`
-	BytesIn   int64  `json:"bytesIn"`
-	BytesOut  int64  `json:"bytesOut"`
-	LastError string `json:"lastError,omitempty"`
+func (s *Server) buildStatus(r *http.Request) StatusResponse {
+	resp := StatusResponse{
+		Version:       buildinfo.Version,
+		Commit:        buildinfo.Commit,
+		Mode:          s.deps.Mode,
+		UptimeSec:     int64(time.Since(s.deps.StartedAt).Seconds()),
+		DataDir:       s.deps.Paths.DataDir,
+		Listen:        s.deps.Config.Listen,
+		AccessWarning: len(s.deps.Config.Access.AllowedLogins) == 0,
+		WebPort:       s.deps.Config.Tailscale.WebPort,
+		Bridges:       []bridge.Status{},
+	}
+	if r != nil {
+		resp.Source = SourceOf(r)
+		resp.Identity = IdentityOf(r)
+	}
+	if s.deps.Node != nil {
+		resp.Tailscale = s.deps.Node.Snapshot()
+	}
+	if s.deps.Bridges != nil {
+		resp.Bridges = s.deps.Bridges.Status()
+	}
+	return resp
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	resp := StatusResponse{
-		Version:   buildinfo.Version,
-		Commit:    buildinfo.Commit,
-		Mode:      s.deps.Mode,
-		UptimeSec: int64(time.Since(s.deps.StartedAt).Seconds()),
-		DataDir:   s.deps.Paths.DataDir,
-		Listen:    s.deps.Config.Listen,
-		Source:    SourceOf(r),
-		Tailscale: TailscaleStatus{
-			State:    "NotConfigured",
-			Hostname: s.deps.Config.Tailscale.Hostname,
-		},
-		Bridges: []BridgeStatus{},
-	}
-	for _, b := range s.deps.Config.Bridges {
-		resp.Bridges = append(resp.Bridges, BridgeStatus{
-			ID: b.ID, Name: b.Name, Port: b.Port, TCPPort: b.TCPPort, State: "Stopped",
-		})
-	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, s.buildStatus(r))
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
@@ -99,6 +111,20 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := s.deps.Ring.Last(n, level)
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+// handleUIShow 由第二个实例调用，唤起本进程的窗口。只接受本机来源。
+func (s *Server) handleUIShow(w http.ResponseWriter, r *http.Request) {
+	if SourceOf(r) != SourceLocal {
+		writeError(w, http.StatusForbidden, "仅限本机")
+		return
+	}
+	if s.deps.ShowUI == nil {
+		writeError(w, http.StatusNotFound, "本进程没有桌面壳")
+		return
+	}
+	s.deps.ShowUI()
+	writeJSON(w, http.StatusOK, map[string]string{"result": "shown"})
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, _ *http.Request) {

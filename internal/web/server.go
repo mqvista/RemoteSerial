@@ -1,7 +1,7 @@
 // Package web 提供 HTTP 管理界面：REST API、WebSocket 推送和内嵌的前端静态文件。
 //
-// 同一个 handler 会挂在两个监听上：本机 127.0.0.1 监听完全信任，
-// tailnet 监听在第 1 期加上 WhoIs 白名单校验。请求来源通过 context 传递。
+// 同一个 handler 挂在两个监听上：本机 127.0.0.1 监听完全信任，
+// tailnet 监听经过 WhoIs 白名单校验。请求来源通过 context 传递。
 package web
 
 import (
@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"time"
 
+	"rsagent/internal/bridge"
 	"rsagent/internal/config"
 	"rsagent/internal/logging"
+	"rsagent/internal/tsnode"
 )
 
 // Source 标记请求来自哪个监听。
@@ -44,6 +46,10 @@ type Deps struct {
 	Ring      *logging.Ring
 	Config    *config.Config
 	Paths     config.Paths
+	Node      *tsnode.Node
+	Bridges   *bridge.Manager
+	Hub       *Hub
+	ShowUI    func() // 非空表示本进程带桌面壳，POST /api/ui/show 会唤起窗口
 	StartedAt time.Time
 	Mode      string // standalone | service | shell
 }
@@ -52,14 +58,21 @@ type Deps struct {
 type Server struct {
 	deps Deps
 	mux  *http.ServeMux
+	hub  *Hub
 }
 
 // New 构造 Server 并注册路由。
 func New(d Deps) *Server {
-	s := &Server{deps: d, mux: http.NewServeMux()}
+	if d.Hub == nil {
+		d.Hub = NewHub()
+	}
+	s := &Server{deps: d, mux: http.NewServeMux(), hub: d.Hub}
 	s.routes()
 	return s
 }
+
+// Notify 触发一次状态推送。
+func (s *Server) Notify() { s.hub.Notify() }
 
 // Handler 返回带来源标记的根 handler。
 func (s *Server) Handler(src Source) http.Handler {
@@ -84,6 +97,11 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, src Source) error {
 		Handler:           s.Handler(src),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		ConnState: func(c net.Conn, st http.ConnState) {
+			if st == http.StateNew && s.deps.Log != nil {
+				s.deps.Log.Debug("HTTP 新连接", "source", src, "remote", c.RemoteAddr().String())
+			}
+		},
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
