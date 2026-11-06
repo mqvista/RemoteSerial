@@ -1,7 +1,7 @@
 # 只在两种情况下运行，普通 push 不会触发，不消耗 Actions 额度：
 #   1. 推送 tag：git tag v0.4.0 && git push origin v0.4.0
 #   2. Actions 页面手动 Run workflow，填版本号
-# 产物：build/installer 两个 job 的 Artifacts（运行页底部可下载），以及最终创建的 GitHub Release（含全部文件和 manifest.json）。
+# 产物：build/installer/macos 三个 job 的 Artifacts（运行页底部可下载），以及最终创建的 GitHub Release（含全部文件和 manifest.json）。
 # 手动触发时也会创建/覆盖 tag v<版本> 对应的 Release。
 name: release
 
@@ -84,8 +84,36 @@ jobs:
           path: dist/rsagent-setup-*.exe
           if-no-files-found: error
 
+  # macOS 版依赖 CGO（串口枚举、WebKit 窗口），只能在 macOS 上编译；产物为通用二进制的 .app 压缩包。
+  # 不单独发布 rsagent-darwin-* 裸程序：清单里出现它们会让 .app 内的程序被自更新替换，破坏包签名。
+  macos:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: 前端
+        run: cd web && npm ci && npm run build
+      - name: .app
+        run: |
+          make macapp VERSION=${{ needs.build.outputs.version }}
+          lipo -info "dist/RemoteSerial Agent.app/Contents/MacOS/rsagent"
+          ls -la dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-macos
+          path: dist/rsagent-macos.zip
+          if-no-files-found: error
+
   release:
-    needs: [build, installer]
+    needs: [build, installer, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -99,6 +127,10 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: dist-installer
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist-macos
           path: dist
       - name: 清单与校验和
         run: |
@@ -115,6 +147,7 @@ jobs:
             dist/rsagent-linux-arm64
             dist/rsagent-linux-amd64
             dist/rsagent-setup-*.exe
+            dist/rsagent-macos.zip
             dist/*.deb
             dist/manifest.json
             dist/SHA256SUMS
