@@ -2,9 +2,9 @@ package tsnode
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/netip"
+	"rsagent/internal/i18n"
 	"sort"
 	"strings"
 	"time"
@@ -31,11 +31,11 @@ func (n *Node) Ping(ctx context.Context, ipStr string) ([]PingResult, error) {
 	lc := n.lc
 	n.mu.Unlock()
 	if lc == nil {
-		return nil, errors.New("节点未启动")
+		return nil, i18n.New("节点未启动")
 	}
 	ip, err := netip.ParseAddr(strings.TrimSpace(ipStr))
 	if err != nil {
-		return nil, fmt.Errorf("IP 非法: %w", err)
+		return nil, i18n.Errorf("IP 非法: %w", err)
 	}
 	out := make([]PingResult, 0, 2)
 	for _, pt := range []tailcfg.PingType{tailcfg.PingDisco, tailcfg.PingTSMP} {
@@ -96,19 +96,19 @@ func (n *Node) Netcheck(ctx context.Context) (*NetcheckReport, error) {
 	lc := n.lc
 	n.mu.Unlock()
 	if srv == nil || lc == nil {
-		return nil, errors.New("节点未启动")
+		return nil, i18n.New("节点未启动")
 	}
 	dm, err := lc.CurrentDERPMap(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("读取 DERP 列表: %w", err)
+		return nil, i18n.Errorf("读取 DERP 列表: %w", err)
 	}
 	sys := srv.Sys()
 	if sys == nil {
-		return nil, errors.New("节点内部状态不可用")
+		return nil, i18n.New("节点内部状态不可用")
 	}
 	ms := sys.MagicSock.Get()
 	if ms == nil {
-		return nil, errors.New("magicsock 不可用")
+		return nil, i18n.New("magicsock 不可用")
 	}
 	start := time.Now()
 	var prev time.Time
@@ -134,7 +134,7 @@ func (n *Node) Netcheck(ctx context.Context) (*NetcheckReport, error) {
 	if rep == nil {
 		rep = ms.GetLastNetcheckReport(ctx)
 		if rep == nil {
-			return nil, errors.New("暂无 netcheck 报告，请稍后再试")
+			return nil, i18n.New("暂无 netcheck 报告，请稍后再试")
 		}
 	}
 	out := &NetcheckReport{

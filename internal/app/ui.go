@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,12 +29,14 @@ import (
 func RunUI(ctx context.Context, o Options) error {
 	paths := config.ResolvePaths(o.DataDir)
 	if err := paths.Ensure(); err != nil {
-		return fmt.Errorf("创建数据目录 %s: %w", paths.DataDir, err)
+		return i18n.Errorf("创建数据目录 %s: %w", paths.DataDir, err)
 	}
 	cfg, _, err := config.Load(paths.ConfigFile)
 	if err != nil {
 		return err
 	}
+	// 托盘与窗口菜单的语言；core 作为服务运行时，壳会从状态接口跟随它的语言。
+	i18n.SetLang(i18n.Resolve(cfg.Language))
 	listen := cfg.Listen
 	if o.Listen != "" {
 		listen = o.Listen
@@ -57,7 +59,7 @@ func RunUI(ctx context.Context, o Options) error {
 	if sup.restartRequested.Load() {
 		// 端口和串口都已释放，再拉起新版本；新实例会等本进程退出。
 		if rerr := update.RestartSelf(); rerr != nil {
-			return fmt.Errorf("重启失败: %w", rerr)
+			return i18n.Errorf("重启失败: %w", rerr)
 		}
 	}
 	return err

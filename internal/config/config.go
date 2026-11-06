@@ -7,10 +7,10 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"strings"
 )
 
@@ -20,8 +20,9 @@ const CurrentVersion = 1
 // Config 是配置文件的根结构。
 type Config struct {
 	Version   int       `json:"version"`
-	Listen    string    `json:"listen"`   // 本机引导/控制监听地址，webview 窗口访问此地址
-	LogLevel  string    `json:"logLevel"` // debug | info | warn | error
+	Listen    string    `json:"listen"`             // 本机引导/控制监听地址，webview 窗口访问此地址
+	LogLevel  string    `json:"logLevel"`           // debug | info | warn | error
+	Language  string    `json:"language,omitempty"` // en | zh-TW；空为跟随系统
 	Tailscale Tailscale `json:"tailscale"`
 	Access    Access    `json:"access"`
 	Update    Update    `json:"update"`
@@ -77,6 +78,19 @@ type PortMatch struct {
 	Serial string `json:"serial"`
 }
 
+// PeekLanguage 只读取配置里的语言设置，文件不存在或无法解析时返回空串，不会创建文件。
+func PeekLanguage(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var v struct {
+		Language string `json:"language"`
+	}
+	_ = json.Unmarshal(data, &v)
+	return v.Language
+}
+
 // Default 返回默认配置。
 func Default() *Config {
 	host, _ := os.Hostname()
@@ -108,7 +122,7 @@ func Load(path string) (cfg *Config, created bool, err error) {
 	if errors.Is(err, os.ErrNotExist) {
 		cfg = Default()
 		if err := cfg.Save(path); err != nil {
-			return nil, false, fmt.Errorf("写入默认配置: %w", err)
+			return nil, false, i18n.Errorf("写入默认配置: %w", err)
 		}
 		return cfg, true, nil
 	}
@@ -117,17 +131,17 @@ func Load(path string) (cfg *Config, created bool, err error) {
 	}
 	cfg = Default()
 	if err := json.Unmarshal(data, cfg); err != nil {
-		return nil, false, fmt.Errorf("解析 %s: %w", path, err)
+		return nil, false, i18n.Errorf("解析 %s: %w", path, err)
 	}
 	if cfg.Version > CurrentVersion {
-		return nil, false, fmt.Errorf("配置版本 %d 高于程序支持的 %d", cfg.Version, CurrentVersion)
+		return nil, false, i18n.Errorf("配置版本 %d 高于程序支持的 %d", cfg.Version, CurrentVersion)
 	}
 	cfg.Version = CurrentVersion
 	if cfg.Update.URL == "" {
 		cfg.Update.URL = DefaultUpdateURL
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, false, fmt.Errorf("配置校验失败: %w", err)
+		return nil, false, i18n.Errorf("配置校验失败: %w", err)
 	}
 	return cfg, false, nil
 }
@@ -159,37 +173,40 @@ func (c *Config) Save(path string) error {
 // Validate 检查配置自洽性。
 func (c *Config) Validate() error {
 	if c.Listen == "" {
-		return errors.New("listen 不能为空")
+		return i18n.New("listen 不能为空")
 	}
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
-		return fmt.Errorf("listen 格式错误: %w", err)
+		return i18n.Errorf("listen 格式错误: %w", err)
 	}
 	switch strings.ToLower(c.LogLevel) {
 	case "debug", "info", "warn", "error":
 	default:
-		return fmt.Errorf("logLevel 非法: %q", c.LogLevel)
+		return i18n.Errorf("logLevel 非法: %q", c.LogLevel)
+	}
+	if c.Language != "" && c.Language != "en" && c.Language != "zh-TW" {
+		return i18n.Errorf("language 非法: %q", c.Language)
 	}
 	if c.Tailscale.Hostname == "" {
-		return errors.New("tailscale.hostname 不能为空")
+		return i18n.New("tailscale.hostname 不能为空")
 	}
 	if c.Tailscale.UDPPort < 0 || c.Tailscale.UDPPort > 65535 {
-		return fmt.Errorf("tailscale.udpPort 越界: %d", c.Tailscale.UDPPort)
+		return i18n.Errorf("tailscale.udpPort 越界: %d", c.Tailscale.UDPPort)
 	}
 	if c.Tailscale.WebPort < 1 || c.Tailscale.WebPort > 65535 {
-		return fmt.Errorf("tailscale.webPort 越界: %d", c.Tailscale.WebPort)
+		return i18n.Errorf("tailscale.webPort 越界: %d", c.Tailscale.WebPort)
 	}
 	for _, r := range c.Tailscale.AdvertiseRoutes {
 		if _, _, err := net.ParseCIDR(r); err != nil {
-			return fmt.Errorf("advertiseRoutes 含非法 CIDR %q", r)
+			return i18n.Errorf("advertiseRoutes 含非法 CIDR %q", r)
 		}
 	}
 	for _, t := range c.Tailscale.Tags {
 		if !strings.HasPrefix(t, "tag:") || len(t) <= 4 {
-			return fmt.Errorf("tailscale.tags 含非法 tag %q，必须形如 tag:name", t)
+			return i18n.Errorf("tailscale.tags 含非法 tag %q，必须形如 tag:name", t)
 		}
 	}
 	if u := c.Update.URL; u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
-		return fmt.Errorf("update.url 必须是 http(s) 地址: %q", u)
+		return i18n.Errorf("update.url 必须是 http(s) 地址: %q", u)
 	}
 
 	ids := map[string]bool{}
@@ -197,59 +214,59 @@ func (c *Config) Validate() error {
 	localPorts := map[int]string{}
 	for i, b := range c.Bridges {
 		if b.ID == "" {
-			return fmt.Errorf("bridges[%d].id 不能为空", i)
+			return i18n.Errorf("bridges[%d].id 不能为空", i)
 		}
 		if ids[b.ID] {
-			return fmt.Errorf("bridge id 重复: %q", b.ID)
+			return i18n.Errorf("bridge id 重复: %q", b.ID)
 		}
 		ids[b.ID] = true
 		if b.Port == "" && b.Match == nil {
-			return fmt.Errorf("bridge %q 需要 port 或 match", b.ID)
+			return i18n.Errorf("bridge %q 需要 port 或 match", b.ID)
 		}
 		if b.Baud <= 0 {
-			return fmt.Errorf("bridge %q baud 非法: %d", b.ID, b.Baud)
+			return i18n.Errorf("bridge %q baud 非法: %d", b.ID, b.Baud)
 		}
 		if b.DataBits < 5 || b.DataBits > 8 {
-			return fmt.Errorf("bridge %q dataBits 非法: %d", b.ID, b.DataBits)
+			return i18n.Errorf("bridge %q dataBits 非法: %d", b.ID, b.DataBits)
 		}
 		switch strings.ToUpper(b.Parity) {
 		case "N", "E", "O", "M", "S":
 		default:
-			return fmt.Errorf("bridge %q parity 非法: %q", b.ID, b.Parity)
+			return i18n.Errorf("bridge %q parity 非法: %q", b.ID, b.Parity)
 		}
 		switch b.StopBits {
 		case 1, 1.5, 2:
 		default:
-			return fmt.Errorf("bridge %q stopBits 非法: %v", b.ID, b.StopBits)
+			return i18n.Errorf("bridge %q stopBits 非法: %v", b.ID, b.StopBits)
 		}
 		switch b.Mode {
 		case "raw", "rfc2217":
 		default:
-			return fmt.Errorf("bridge %q mode 非法: %q", b.ID, b.Mode)
+			return i18n.Errorf("bridge %q mode 非法: %q", b.ID, b.Mode)
 		}
 		switch b.ClientPolicy {
 		case "reject", "replace":
 		default:
-			return fmt.Errorf("bridge %q clientPolicy 非法: %q", b.ID, b.ClientPolicy)
+			return i18n.Errorf("bridge %q clientPolicy 非法: %q", b.ID, b.ClientPolicy)
 		}
 		if b.TCPPort < 1 || b.TCPPort > 65535 {
-			return fmt.Errorf("bridge %q tcpPort 越界: %d", b.ID, b.TCPPort)
+			return i18n.Errorf("bridge %q tcpPort 越界: %d", b.ID, b.TCPPort)
 		}
 		if other, dup := ports[b.TCPPort]; dup {
-			return fmt.Errorf("bridge %q 与 %q 的 tcpPort 重复: %d", b.ID, other, b.TCPPort)
+			return i18n.Errorf("bridge %q 与 %q 的 tcpPort 重复: %d", b.ID, other, b.TCPPort)
 		}
 		ports[b.TCPPort] = b.ID
 		if b.LocalPort < 0 || b.LocalPort > 65535 {
-			return fmt.Errorf("bridge %q localPort 越界: %d", b.ID, b.LocalPort)
+			return i18n.Errorf("bridge %q localPort 越界: %d", b.ID, b.LocalPort)
 		}
 		if b.LocalPort > 0 {
 			if other, dup := localPorts[b.LocalPort]; dup {
-				return fmt.Errorf("bridge %q 与 %q 的 localPort 重复: %d", b.ID, other, b.LocalPort)
+				return i18n.Errorf("bridge %q 与 %q 的 localPort 重复: %d", b.ID, other, b.LocalPort)
 			}
 			localPorts[b.LocalPort] = b.ID
 		}
 		if b.IdleTimeoutSec < 0 {
-			return fmt.Errorf("bridge %q idleTimeoutSec 不能为负", b.ID)
+			return i18n.Errorf("bridge %q idleTimeoutSec 不能为负", b.ID)
 		}
 	}
 	return nil

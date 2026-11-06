@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"strings"
 	"sync"
 	"time"
@@ -108,6 +109,7 @@ type Node struct {
 	srv    *tsnet.Server
 	lc     *local.Client
 	snap   Snapshot
+	msg    i18n.Text // 最近一次错误或提示，渲染快照时按当前语言翻译
 	cancel context.CancelFunc
 }
 
@@ -140,7 +142,7 @@ func (n *Node) UpdateConfig(hostname, controlURL string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.srv != nil {
-		return errors.New("节点运行中，先停止再修改")
+		return i18n.New("节点运行中，先停止再修改")
 	}
 	if hostname != "" {
 		n.cfg.Hostname = hostname
@@ -156,7 +158,7 @@ func (n *Node) SetTags(tags []string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.srv != nil {
-		return errors.New("节点运行中，tag 需在登录时指定")
+		return i18n.New("节点运行中，tag 需在登录时指定")
 	}
 	n.cfg.Tags = append([]string(nil), tags...)
 	n.snap.AdvertiseTags = append([]string(nil), tags...)
@@ -186,6 +188,7 @@ func (n *Node) Snapshot() Snapshot {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	s := n.snap
+	s.Message = i18n.String(n.msg)
 	s.HasState = n.HasState()
 	return s
 }
@@ -211,15 +214,15 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 		st := n.snap.State
 		n.mu.Unlock()
 		if authKey == "" || (st != StateNeedsLogin && st != StateNeedsMachineAuth && st != StateError) {
-			return errors.New("节点已在运行")
+			return i18n.New("节点已在运行")
 		}
-		n.log.Info("节点处于需要登录的状态，先停止再用新 key 登录", "state", st)
+		n.log.Info(i18n.T("节点处于需要登录的状态，先停止再用新 key 登录"), "state", st)
 		_ = n.Stop()
 		n.mu.Lock()
 	}
 	if authKey == "" && !n.HasState() {
 		n.mu.Unlock()
-		return errors.New("尚未登录，需要 auth key")
+		return i18n.New("尚未登录，需要 auth key")
 	}
 	if len(tags) > 0 {
 		n.cfg.Tags = append([]string(nil), tags...)
@@ -229,7 +232,7 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 	}
 	if strings.HasPrefix(authKey, "tskey-client-") && len(tags) == 0 {
 		n.mu.Unlock()
-		return errors.New("使用 OAuth client secret 登录必须指定 tag，例如 tag:serial-agent")
+		return i18n.New("使用 OAuth client secret 登录必须指定 tag，例如 tag:serial-agent")
 	}
 	if strings.HasPrefix(authKey, "tskey-client-") && !strings.Contains(authKey, "?") {
 		// 不加 ephemeral=false 时 OAuth 换出的 key 默认建临时节点，断线即被删除。
@@ -237,7 +240,7 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 	}
 	if err := os.MkdirAll(n.cfg.StateDir, 0o700); err != nil {
 		n.mu.Unlock()
-		return fmt.Errorf("创建状态目录: %w", err)
+		return i18n.Errorf("创建状态目录: %w", err)
 	}
 
 	srv := &tsnet.Server{
@@ -254,17 +257,17 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 		srv.AdvertiseTags = append([]string(nil), tags...)
 	}
 	n.srv = srv
-	n.setStateLocked(StateStarting, "")
+	n.setStateLocked(StateStarting, nil)
 	n.mu.Unlock()
 	n.emit()
 
 	if err := srv.Start(); err != nil {
-		n.failStart(srv, fmt.Errorf("tsnet 启动失败: %w", err))
+		n.failStart(srv, i18n.Errorf("tsnet 启动失败: %w", err))
 		return err
 	}
 	lc, err := srv.LocalClient()
 	if err != nil {
-		n.failStart(srv, fmt.Errorf("获取本地客户端: %w", err))
+		n.failStart(srv, i18n.Errorf("获取本地客户端: %w", err))
 		return err
 	}
 
@@ -287,10 +290,10 @@ func (n *Node) failStart(srv *tsnet.Server, err error) {
 	n.mu.Lock()
 	n.srv = nil
 	n.lc = nil
-	n.setStateLocked(StateError, err.Error())
+	n.setStateLocked(StateError, i18n.ErrText(err))
 	n.mu.Unlock()
 	n.emit()
-	n.log.Error("节点启动失败", "err", err)
+	n.log.Error(i18n.T("节点启动失败"), "err", err)
 }
 
 // Stop 停止节点但保留持久化状态，下次 Start 不需要 auth key。
@@ -315,13 +318,13 @@ func (n *Node) Stop() error {
 	n.mu.Lock()
 	n.snap.AuthURL = ""
 	if n.HasState() {
-		n.setStateLocked(StateStopped, "")
+		n.setStateLocked(StateStopped, nil)
 	} else {
-		n.setStateLocked(StateNotConfigured, "")
+		n.setStateLocked(StateNotConfigured, nil)
 	}
 	n.mu.Unlock()
 	n.emit()
-	n.log.Info("节点已停止")
+	n.log.Info(i18n.T("节点已停止"))
 	return err
 }
 
@@ -333,21 +336,21 @@ func (n *Node) Logout(ctx context.Context) error {
 	if lc != nil {
 		lctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		if err := lc.Logout(lctx); err != nil {
-			n.log.Warn("向控制服务器注销失败，继续本地重置", "err", err)
+			n.log.Warn(i18n.T("向控制服务器注销失败，继续本地重置"), "err", err)
 		}
 		cancel()
 	}
 	_ = n.Stop()
 	if err := os.RemoveAll(n.cfg.StateDir); err != nil {
-		return fmt.Errorf("删除状态目录: %w", err)
+		return i18n.Errorf("删除状态目录: %w", err)
 	}
 	n.mu.Lock()
-	n.setStateLocked(StateNotConfigured, "")
+	n.setStateLocked(StateNotConfigured, nil)
 	n.snap.IP, n.snap.IPv6, n.snap.DNSName, n.snap.Tailnet, n.snap.LoginName = "", "", "", "", ""
 	n.snap.Tags, n.snap.KeyExpiry = nil, nil
 	n.mu.Unlock()
 	n.emit()
-	n.log.Info("已退出登录并清除节点状态")
+	n.log.Info(i18n.T("已退出登录并清除节点状态"))
 	return nil
 }
 
@@ -357,7 +360,7 @@ func (n *Node) Listen(network, addr string) (net.Listener, error) {
 	srv := n.srv
 	n.mu.Unlock()
 	if srv == nil {
-		return nil, errors.New("节点未启动")
+		return nil, i18n.New("节点未启动")
 	}
 	return srv.Listen(network, addr)
 }
@@ -368,7 +371,7 @@ func (n *Node) WhoIs(ctx context.Context, remoteAddr string) (*Identity, error) 
 	lc := n.lc
 	n.mu.Unlock()
 	if lc == nil {
-		return nil, errors.New("节点未启动")
+		return nil, i18n.New("节点未启动")
 	}
 	wctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -396,7 +399,7 @@ func (n *Node) Peers(ctx context.Context) ([]Peer, error) {
 	lc := n.lc
 	n.mu.Unlock()
 	if lc == nil {
-		return nil, errors.New("节点未启动")
+		return nil, i18n.New("节点未启动")
 	}
 	sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -440,12 +443,12 @@ func (n *Node) tsLogf(level slog.Level) func(string, ...any) {
 	}
 }
 
-func (n *Node) setStateLocked(s State, msg string) {
+func (n *Node) setStateLocked(s State, msg i18n.Text) {
 	if n.snap.State != s {
 		n.snap.Since = time.Now()
 	}
 	n.snap.State = s
-	n.snap.Message = msg
+	n.msg = msg
 }
 
 func (n *Node) emit() {
@@ -462,7 +465,7 @@ func (n *Node) watch(ctx context.Context, lc *local.Client) {
 			if ctx.Err() != nil {
 				return
 			}
-			n.log.Debug("订阅 IPN 总线失败，重试", "err", err)
+			n.log.Debug(i18n.T("订阅 IPN 总线失败，重试"), "err", err)
 			select {
 			case <-ctx.Done():
 				return
@@ -477,9 +480,9 @@ func (n *Node) watch(ctx context.Context, lc *local.Client) {
 			}
 			if nt.ErrMessage != nil && *nt.ErrMessage != "" {
 				n.mu.Lock()
-				n.snap.Message = *nt.ErrMessage
+				n.msg = i18n.Raw(*nt.ErrMessage)
 				n.mu.Unlock()
-				n.log.Warn("tailscale 后端报告错误", "msg", *nt.ErrMessage)
+				n.log.Warn(i18n.T("tailscale 后端报告错误"), "msg", *nt.ErrMessage)
 				n.emit()
 			}
 			if nt.BrowseToURL != nil && *nt.BrowseToURL != "" {
@@ -487,9 +490,9 @@ func (n *Node) watch(ctx context.Context, lc *local.Client) {
 				// 只能用 key 重新登录，或由管理员在浏览器打开此链接。
 				n.mu.Lock()
 				n.snap.AuthURL = *nt.BrowseToURL
-				n.setStateLocked(StateNeedsLogin, "控制服务器要求重新认证（密钥过期、被撤销或 tag 变化）：用 auth key 重新登录，或在浏览器打开认证链接")
+				n.setStateLocked(StateNeedsLogin, i18n.M("控制服务器要求重新认证（密钥过期、被撤销或 tag 变化）：用 auth key 重新登录，或在浏览器打开认证链接"))
 				n.mu.Unlock()
-				n.log.Warn("控制服务器要求重新认证", "authURL", *nt.BrowseToURL)
+				n.log.Warn(i18n.T("控制服务器要求重新认证"), "authURL", *nt.BrowseToURL)
 				n.emit()
 				continue
 			}
@@ -503,21 +506,21 @@ func (n *Node) watch(ctx context.Context, lc *local.Client) {
 
 func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	var s State
-	msg := ""
+	var msg i18n.Text
 	switch st {
 	case ipn.Running:
 		s = StateRunning
 	case ipn.NeedsLogin:
 		s = StateNeedsLogin
-		msg = "控制服务器要求登录：auth key 无效、已过期或已被撤销"
+		msg = i18n.M("控制服务器要求登录：auth key 无效、已过期或已被撤销")
 	case ipn.NeedsMachineAuth:
 		s = StateNeedsMachineAuth
-		msg = "等待管理员在 Tailscale 后台批准此设备"
+		msg = i18n.M("等待管理员在 Tailscale 后台批准此设备")
 	case ipn.Stopped:
 		s = StateStopped
 	case ipn.InUseOtherUser:
 		s = StateError
-		msg = "节点被其他用户占用"
+		msg = i18n.M("节点被其他用户占用")
 	default:
 		s = StateStarting
 	}
@@ -526,7 +529,7 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	prev := n.snap.State
 	// Starting 期间后端会短暂经过 NeedsLogin，auth key 正常时很快离开。
 	// 只在真正停留时才切换状态，避免界面闪烁：这里延迟判断交给 up() 的超时。
-	if s == StateNeedsLogin && prev == StateStarting && n.snap.Message == "" {
+	if s == StateNeedsLogin && prev == StateStarting && n.msg == nil {
 		n.mu.Unlock()
 		return
 	}
@@ -545,12 +548,12 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 		n.refreshSelf(ctx, lc)
 		if routes := n.Config().AdvertiseRoutes; len(routes) > 0 {
 			if err := applyRoutes(ctx, lc, routes); err != nil {
-				n.log.Warn("宣告子网路由失败", "err", err)
+				n.log.Warn(i18n.T("宣告子网路由失败"), "err", err)
 			}
 		}
 	}
 	if prev != s {
-		n.log.Info("节点状态变化", "from", prev, "to", s)
+		n.log.Info(i18n.T("节点状态变化"), "from", prev, "to", s)
 	}
 	n.emit()
 }
@@ -568,19 +571,19 @@ func (n *Node) up(ctx context.Context, srv *tsnet.Server, lc *local.Client) {
 		n.mu.Unlock()
 		return
 	}
-	msg := err.Error()
+	msg := i18n.ErrText(err)
 	if errors.Is(err, context.DeadlineExceeded) {
 		switch n.snap.State {
 		case StateNeedsMachineAuth:
-			msg = "等待管理员在 Tailscale 后台批准此设备"
+			msg = i18n.M("等待管理员在 Tailscale 后台批准此设备")
 		default:
-			msg = "上线超时：auth key 可能无效或已过期，或无法连接控制服务器"
+			msg = i18n.M("上线超时：auth key 可能无效或已过期，或无法连接控制服务器")
 			n.snap.State = StateNeedsLogin
 		}
 	}
-	n.snap.Message = msg
+	n.msg = msg
 	n.mu.Unlock()
-	n.log.Warn("节点上线未完成", "err", err)
+	n.log.Warn(i18n.T("节点上线未完成"), "err", err)
 	n.emit()
 
 	// 再查一次后端真实状态，避免错过通知。
@@ -594,7 +597,7 @@ func (n *Node) refreshSelf(ctx context.Context, lc *local.Client) {
 	defer cancel()
 	st, err := lc.StatusWithoutPeers(sctx)
 	if err != nil {
-		n.log.Warn("读取节点状态失败", "err", err)
+		n.log.Warn(i18n.T("读取节点状态失败"), "err", err)
 		return
 	}
 	n.mu.Lock()
@@ -624,7 +627,7 @@ func (n *Node) refreshSelf(ctx context.Context, lc *local.Client) {
 	if st.CurrentTailnet != nil {
 		n.snap.Tailnet = st.CurrentTailnet.Name
 	}
-	n.snap.Message = ""
+	n.msg = nil
 }
 
 func applyRoutes(ctx context.Context, lc *local.Client, routes []string) error {
@@ -632,7 +635,7 @@ func applyRoutes(ctx context.Context, lc *local.Client, routes []string) error {
 	for _, r := range routes {
 		p, err := netip.ParsePrefix(strings.TrimSpace(r))
 		if err != nil {
-			return fmt.Errorf("非法 CIDR %q: %w", r, err)
+			return i18n.Errorf("非法 CIDR %q: %w", r, err)
 		}
 		prefixes = append(prefixes, p.Masked())
 	}

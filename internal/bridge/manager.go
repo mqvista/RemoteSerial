@@ -1,10 +1,9 @@
 package bridge
 
 import (
-	"errors"
-	"fmt"
 	"log/slog"
 	"reflect"
+	"rsagent/internal/i18n"
 	"sync"
 
 	"rsagent/internal/config"
@@ -114,7 +113,7 @@ func (m *Manager) SetEnabled(id string, enabled bool) error {
 	}
 	m.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("桥接 %q 不存在", id)
+		return i18n.Errorf("桥接 %q 不存在", id)
 	}
 	if !enabled {
 		b.stop(StateDisabled)
@@ -122,7 +121,7 @@ func (m *Manager) SetEnabled(id string, enabled bool) error {
 	}
 	if listen == nil {
 		b.stop(StateWaitingNetwork)
-		return errors.New("Tailscale 节点未运行，桥接将在节点上线后自动启动")
+		return i18n.New("Tailscale 节点未运行，桥接将在节点上线后自动启动")
 	}
 	b.start(listen)
 	return nil
@@ -134,10 +133,10 @@ func (m *Manager) Kick(id string) error {
 	b, ok := m.bridges[id]
 	m.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("桥接 %q 不存在", id)
+		return i18n.Errorf("桥接 %q 不存在", id)
 	}
 	if !b.kick() {
-		return errors.New("当前没有客户端")
+		return i18n.New("当前没有客户端")
 	}
 	return nil
 }

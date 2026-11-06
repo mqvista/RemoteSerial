@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"rsagent/internal/i18n"
 	"strings"
 
 	"rsagent/internal/tsnode"
@@ -24,18 +25,18 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if s.deps.Node == nil {
-			http.Error(w, "节点未初始化", http.StatusServiceUnavailable)
+			http.Error(w, i18n.T("节点未初始化"), http.StatusServiceUnavailable)
 			return
 		}
 		id, err := s.deps.Node.WhoIs(r.Context(), r.RemoteAddr)
 		if err != nil {
-			s.deps.Log.Warn("WhoIs 失败，拒绝访问", "remote", r.RemoteAddr, "err", err)
-			http.Error(w, "无法识别请求方身份", http.StatusForbidden)
+			s.deps.Log.Warn(i18n.T("WhoIs 失败，拒绝访问"), "remote", r.RemoteAddr, "err", err)
+			http.Error(w, i18n.T("无法识别请求方身份"), http.StatusForbidden)
 			return
 		}
 		if !s.loginAllowed(id.LoginName) {
-			s.deps.Log.Warn("登录名不在白名单，拒绝访问", "login", id.LoginName, "node", id.Node, "path", r.URL.Path)
-			http.Error(w, "此账号无权访问", http.StatusForbidden)
+			s.deps.Log.Warn(i18n.T("登录名不在白名单，拒绝访问"), "login", id.LoginName, "node", id.Node, "path", r.URL.Path)
+			http.Error(w, i18n.T("此账号无权访问"), http.StatusForbidden)
 			return
 		}
 		ctx := context.WithValue(r.Context(), identityKey, id)

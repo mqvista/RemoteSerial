@@ -10,11 +10,11 @@ package rfc2217
 import (
 	"bufio"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"rsagent/internal/i18n"
 	"sync"
 	"time"
 )
@@ -285,7 +285,7 @@ func (s *Server) feed(buf []byte) error {
 			}
 			s.sbBuf = append(s.sbBuf, c)
 			if len(s.sbBuf) > 1024 {
-				return errors.New("rfc2217: 子协商过长")
+				return i18n.New("rfc2217: 子协商过长")
 			}
 		}
 	}
@@ -318,7 +318,7 @@ func (s *Server) handleOption(st parseState, opt byte) error {
 		}
 	case stDont:
 		if opt == optComPort {
-			s.log.Debug("rfc2217: 客户端拒绝 COM-PORT-OPTION")
+			s.log.Debug(i18n.T("rfc2217: 客户端拒绝 COM-PORT-OPTION"))
 		}
 		delete(s.sentWill, opt)
 	case stWont:
@@ -339,7 +339,7 @@ func (s *Server) handleSub(b []byte) error {
 		if len(data) == 0 {
 			return s.reply(cmdSignature, []byte("rsagent"))
 		}
-		s.log.Debug("rfc2217: 客户端签名", "sig", string(data))
+		s.log.Debug(i18n.T("rfc2217: 客户端签名"), "sig", string(data))
 		return nil
 
 	case cmdSetBaudrate:
@@ -351,7 +351,7 @@ func (s *Server) handleSub(b []byte) error {
 			m := s.port.GetMode()
 			m.Baud = baud
 			if err := s.port.SetMode(m); err != nil {
-				s.log.Warn("rfc2217: 设置波特率失败", "baud", baud, "err", err)
+				s.log.Warn(i18n.T("rfc2217: 设置波特率失败"), "baud", baud, "err", err)
 			} else {
 				s.changed()
 			}
@@ -368,7 +368,7 @@ func (s *Server) handleSub(b []byte) error {
 			m := s.port.GetMode()
 			m.DataBits = v
 			if err := s.port.SetMode(m); err != nil {
-				s.log.Warn("rfc2217: 设置数据位失败", "bits", v, "err", err)
+				s.log.Warn(i18n.T("rfc2217: 设置数据位失败"), "bits", v, "err", err)
 			} else {
 				s.changed()
 			}
@@ -383,7 +383,7 @@ func (s *Server) handleSub(b []byte) error {
 			m := s.port.GetMode()
 			m.Parity = p
 			if err := s.port.SetMode(m); err != nil {
-				s.log.Warn("rfc2217: 设置校验位失败", "parity", string(p), "err", err)
+				s.log.Warn(i18n.T("rfc2217: 设置校验位失败"), "parity", string(p), "err", err)
 			} else {
 				s.changed()
 			}
@@ -398,7 +398,7 @@ func (s *Server) handleSub(b []byte) error {
 			m := s.port.GetMode()
 			m.StopBits = sb
 			if err := s.port.SetMode(m); err != nil {
-				s.log.Warn("rfc2217: 设置停止位失败", "stop", sb, "err", err)
+				s.log.Warn(i18n.T("rfc2217: 设置停止位失败"), "stop", sb, "err", err)
 			} else {
 				s.changed()
 			}
@@ -453,7 +453,7 @@ func (s *Server) handleSub(b []byte) error {
 		rx := data[0] == 1 || data[0] == 3
 		tx := data[0] == 2 || data[0] == 3
 		if err := s.port.Purge(rx, tx); err != nil {
-			s.log.Debug("rfc2217: 清空缓冲失败", "err", err)
+			s.log.Debug(i18n.T("rfc2217: 清空缓冲失败"), "err", err)
 		}
 		return s.reply(cmdPurgeData, []byte{data[0]})
 	}
@@ -470,7 +470,7 @@ func (s *Server) control(v byte) byte {
 		return ctlBreakOff
 	case ctlBreakOn:
 		if err := s.port.Break(250 * time.Millisecond); err != nil {
-			s.log.Debug("rfc2217: break 失败", "err", err)
+			s.log.Debug(i18n.T("rfc2217: break 失败"), "err", err)
 		}
 		return ctlBreakOn
 	case ctlBreakOff:
@@ -480,7 +480,7 @@ func (s *Server) control(v byte) byte {
 	case ctlDTROn, ctlDTROff:
 		on := v == ctlDTROn
 		if err := s.port.SetDTR(on); err != nil {
-			s.log.Debug("rfc2217: 设置 DTR 失败", "on", on, "err", err)
+			s.log.Debug(i18n.T("rfc2217: 设置 DTR 失败"), "on", on, "err", err)
 		} else {
 			s.changed()
 		}
@@ -490,7 +490,7 @@ func (s *Server) control(v byte) byte {
 	case ctlRTSOn, ctlRTSOff:
 		on := v == ctlRTSOn
 		if err := s.port.SetRTS(on); err != nil {
-			s.log.Debug("rfc2217: 设置 RTS 失败", "on", on, "err", err)
+			s.log.Debug(i18n.T("rfc2217: 设置 RTS 失败"), "on", on, "err", err)
 		} else {
 			s.changed()
 		}

@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"rsagent/internal/i18n"
 	"strings"
 )
 
@@ -20,6 +21,7 @@ type settingsUpdate struct {
 	Tags          *[]string `json:"tags"`
 	UpdateURL     *string   `json:"updateURL"`
 	UpdateAuto    *bool     `json:"updateAutoCheck"`
+	Language      *string   `json:"language"` // en | zh-TW | ""（跟随系统）
 }
 
 type settingsResponse struct {
@@ -33,7 +35,7 @@ type settingsResponse struct {
 func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	var u settingsUpdate
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&u); err != nil {
-		writeError(w, http.StatusBadRequest, "请求体格式错误: "+err.Error())
+		writeError(w, http.StatusBadRequest, i18n.Sprintf("请求体格式错误: %v", err))
 		return
 	}
 	cfg := s.deps.Config
@@ -117,6 +119,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		updateChanged = true
 	}
 
+	if u.Language != nil {
+		cfg.Language = strings.TrimSpace(*u.Language)
+	}
+
 	if err := cfg.Validate(); err != nil {
 		*cfg = backup
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -124,7 +130,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := cfg.Save(s.deps.Paths.ConfigFile); err != nil {
 		*cfg = backup
-		writeError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, i18n.Sprintf("保存配置失败: %v", err))
 		return
 	}
 
@@ -136,6 +142,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if u.AllowedLogins != nil {
 		resp.Applied = append(resp.Applied, "allowedLogins")
 	}
+	if u.Language != nil {
+		i18n.SetLang(i18n.Resolve(cfg.Language))
+		resp.Applied = append(resp.Applied, "language")
+	}
 	if updateChanged {
 		if s.deps.Updater != nil {
 			s.deps.Updater.SetConfig(cfg.Update.URL, cfg.Update.AutoCheck)
@@ -144,7 +154,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.RestartRequired = len(resp.Pending) > 0
 	resp.Config = cfg
-	s.deps.Log.Info("设置已更新", "applied", resp.Applied, "pending", resp.Pending, "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("设置已更新"), "applied", resp.Applied, "pending", resp.Pending, "by", requesterLabel(r))
 	s.hub.Notify()
 	writeJSON(w, http.StatusOK, resp)
 }

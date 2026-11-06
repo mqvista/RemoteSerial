@@ -3,10 +3,10 @@ package deploy
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"runtime"
 	"strings"
 	"time"
@@ -42,7 +42,7 @@ func ServiceConfig(o Options) *service.Config {
 	return &service.Config{
 		Name:        ServiceName,
 		DisplayName: "RemoteSerial Agent",
-		Description: "远程串口桥接 Agent：内嵌 Tailscale 节点，把本机串口转成 tailnet 内可达的 TCP 服务。",
+		Description: "Remote serial bridge agent: embeds a Tailscale node and exposes local serial ports as TCP services in the tailnet.",
 		Executable:  ServiceBinary(o),
 		Arguments:   serviceArgs(o),
 		Option: service.KeyValue{
@@ -81,7 +81,7 @@ func (p *Program) Stop(s service.Service) error {
 		case err := <-p.done:
 			return err
 		case <-time.After(20 * time.Second):
-			return errors.New("core 停止超时")
+			return i18n.New("core 停止超时")
 		}
 	}
 	return nil
@@ -134,17 +134,17 @@ func serviceAction(o Options, action string) error {
 	case ActionServiceRemove:
 		_ = svc.Stop()
 		if err := svc.Uninstall(); err != nil && !errors.Is(err, service.ErrNotInstalled) {
-			return fmt.Errorf("卸载服务: %w", err)
+			return i18n.Errorf("卸载服务: %w", err)
 		}
 		return nil
 	case ActionServiceStart:
 		if err := svc.Start(); err != nil {
-			return fmt.Errorf("启动服务: %w", err)
+			return i18n.Errorf("启动服务: %w", err)
 		}
 		return nil
 	case ActionServiceStop:
 		if err := svc.Stop(); err != nil {
-			return fmt.Errorf("停止服务: %w", err)
+			return i18n.Errorf("停止服务: %w", err)
 		}
 		return nil
 	case ActionServiceRestart:
@@ -157,11 +157,11 @@ func serviceAction(o Options, action string) error {
 			time.Sleep(500 * time.Millisecond)
 		}
 		if err := svc.Start(); err != nil {
-			return fmt.Errorf("重启服务: %w", err)
+			return i18n.Errorf("重启服务: %w", err)
 		}
 		return nil
 	}
-	return fmt.Errorf("未知服务动作 %q", action)
+	return i18n.Errorf("未知服务动作 %q", action)
 }
 
 func serviceInstall(o Options, svc service.Service) error {
@@ -170,19 +170,19 @@ func serviceInstall(o Options, svc service.Service) error {
 		_ = svc.Stop()
 	}
 	if err := copyBinary(o.ExePath, ServiceBinary(o)); err != nil {
-		return fmt.Errorf("复制程序到 %s: %w", ServiceBinary(o), err)
+		return i18n.Errorf("复制程序到 %s: %w", ServiceBinary(o), err)
 	}
 	if installed {
 		if err := updateServiceBinPath(o); err != nil {
-			return fmt.Errorf("更新服务路径: %w", err)
+			return i18n.Errorf("更新服务路径: %w", err)
 		}
 	} else {
 		if err := svc.Install(); err != nil {
-			return fmt.Errorf("安装服务: %w", err)
+			return i18n.Errorf("安装服务: %w", err)
 		}
 	}
 	if err := svc.Start(); err != nil {
-		return fmt.Errorf("服务已安装但启动失败: %w。可查看数据目录 logs\\rsagent.log", err)
+		return i18n.Errorf("服务已安装但启动失败: %w。可查看数据目录 logs\\rsagent.log", err)
 	}
 	return nil
 }

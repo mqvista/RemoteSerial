@@ -12,13 +12,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"runtime"
 	"strconv"
 	"strings"
@@ -98,6 +97,8 @@ type Updater struct {
 	st  Status
 	dl  context.CancelFunc
 	err error
+
+	errTxt i18n.Text // 最近一次错误，渲染状态时按当前语言翻译
 }
 
 // Platform 返回当前平台键。
@@ -134,6 +135,7 @@ func (u *Updater) Status() Status {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	s := u.st
+	s.Error = i18n.String(u.errTxt)
 	if s.Latest != nil {
 		l := *s.Latest
 		s.Latest = &l
@@ -168,9 +170,9 @@ func (u *Updater) emit() {
 func (u *Updater) setError(err error) {
 	u.mu.Lock()
 	if err != nil {
-		u.st.Error = err.Error()
+		u.errTxt = i18n.ErrText(err)
 	} else {
-		u.st.Error = ""
+		u.errTxt = nil
 	}
 	u.mu.Unlock()
 }
@@ -180,11 +182,11 @@ func (u *Updater) Check(ctx context.Context) (Status, error) {
 	u.mu.Lock()
 	if u.st.Checking {
 		u.mu.Unlock()
-		return u.Status(), errors.New("正在检查")
+		return u.Status(), i18n.New("正在检查")
 	}
 	url := u.st.URL
 	u.st.Checking = true
-	u.st.Error = ""
+	u.errTxt = nil
 	u.mu.Unlock()
 	u.emit()
 
@@ -194,7 +196,7 @@ func (u *Updater) Check(ctx context.Context) (Status, error) {
 	u.st.Checking = false
 	u.st.LastCheck = &now
 	if err != nil {
-		u.st.Error = err.Error()
+		u.errTxt = i18n.ErrText(err)
 		u.mu.Unlock()
 		u.emit()
 		return u.Status(), err
@@ -203,10 +205,11 @@ func (u *Updater) Check(ctx context.Context) (Status, error) {
 	if !ok {
 		u.st.Latest = &Latest{Version: m.Version, Notes: m.Notes, PublishedAt: m.PublishedAt}
 		u.st.Available = false
-		u.st.Error = fmt.Sprintf("清单中没有 %s 的程序", Platform())
+		perr := i18n.Errorf("清单中没有 %s 的程序", Platform())
+		u.errTxt = i18n.ErrText(perr)
 		u.mu.Unlock()
 		u.emit()
-		return u.Status(), errors.New(u.st.Error)
+		return u.Status(), perr
 	}
 	u.st.Latest = &Latest{Version: m.Version, Notes: m.Notes, PublishedAt: m.PublishedAt, URL: asset.URL, SHA256: strings.ToLower(asset.SHA256), Size: asset.Size}
 	u.st.Available = Newer(u.st.Current, m.Version)
@@ -217,7 +220,7 @@ func (u *Updater) Check(ctx context.Context) (Status, error) {
 
 func (u *Updater) fetchManifest(ctx context.Context, url string) (*Manifest, error) {
 	if url == "" {
-		return nil, errors.New("未配置更新地址")
+		return nil, i18n.New("未配置更新地址")
 	}
 	rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -229,18 +232,18 @@ func (u *Updater) fetchManifest(ctx context.Context, url string) (*Manifest, err
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := u.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("获取清单: %w", err)
+		return nil, i18n.Errorf("获取清单: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("获取清单: HTTP %d", resp.StatusCode)
+		return nil, i18n.Errorf("获取清单: HTTP %d", resp.StatusCode)
 	}
 	var m Manifest
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&m); err != nil {
-		return nil, fmt.Errorf("清单格式错误: %w", err)
+		return nil, i18n.Errorf("清单格式错误: %w", err)
 	}
 	if m.Version == "" {
-		return nil, errors.New("清单缺少 version")
+		return nil, i18n.New("清单缺少 version")
 	}
 	return &m, nil
 }
@@ -250,20 +253,20 @@ func (u *Updater) StartDownload(ctx context.Context) error {
 	u.mu.Lock()
 	if u.st.Downloading {
 		u.mu.Unlock()
-		return errors.New("正在下载")
+		return i18n.New("正在下载")
 	}
 	if u.st.Latest == nil || u.st.Latest.URL == "" {
 		u.mu.Unlock()
-		return errors.New("请先检查更新")
+		return i18n.New("请先检查更新")
 	}
 	if !u.st.Available {
 		u.mu.Unlock()
-		return errors.New("当前已是最新版本")
+		return i18n.New("当前已是最新版本")
 	}
 	if u.st.Downloaded != nil && u.st.Downloaded.Version == u.st.Latest.Version {
 		if err := VerifyFile(u.st.Downloaded.File, u.st.Downloaded.SHA256); err == nil {
 			u.mu.Unlock()
-			return errors.New("该版本已下载，可直接应用")
+			return i18n.New("该版本已下载，可直接应用")
 		}
 	}
 	latest := *u.st.Latest
@@ -271,7 +274,7 @@ func (u *Updater) StartDownload(ctx context.Context) error {
 	u.dl = cancel
 	u.st.Downloading = true
 	u.st.Received, u.st.Total = 0, latest.Size
-	u.st.Error = ""
+	u.errTxt = nil
 	u.mu.Unlock()
 	u.emit()
 
@@ -281,11 +284,11 @@ func (u *Updater) StartDownload(ctx context.Context) error {
 		u.st.Downloading = false
 		u.dl = nil
 		if err != nil {
-			u.st.Error = err.Error()
-			u.log.Warn("下载更新失败", "version", latest.Version, "err", err)
+			u.errTxt = i18n.ErrText(err)
+			u.log.Warn(i18n.T("下载更新失败"), "version", latest.Version, "err", err)
 		} else {
 			u.st.Downloaded = &p
-			u.log.Info("更新已下载", "version", p.Version, "file", p.File, "size", p.Size)
+			u.log.Info(i18n.T("更新已下载"), "version", p.Version, "file", p.File, "size", p.Size)
 		}
 		u.mu.Unlock()
 		u.emit()
@@ -314,11 +317,11 @@ func (u *Updater) download(ctx context.Context, l Latest) (Pending, error) {
 	req.Header.Set("User-Agent", "rsagent/"+u.st.Current)
 	resp, err := u.client.Do(req)
 	if err != nil {
-		return Pending{}, fmt.Errorf("下载: %w", err)
+		return Pending{}, i18n.Errorf("下载: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Pending{}, fmt.Errorf("下载: HTTP %d", resp.StatusCode)
+		return Pending{}, i18n.Errorf("下载: HTTP %d", resp.StatusCode)
 	}
 	if resp.ContentLength > 0 {
 		u.mu.Lock()
@@ -360,9 +363,9 @@ func (u *Updater) download(ctx context.Context, l Latest) (Pending, error) {
 			f.Close()
 			os.Remove(tmp)
 			if ctx.Err() != nil {
-				return Pending{}, errors.New("下载已取消")
+				return Pending{}, i18n.New("下载已取消")
 			}
-			return Pending{}, fmt.Errorf("下载中断: %w", rerr)
+			return Pending{}, i18n.Errorf("下载中断: %w", rerr)
 		}
 	}
 	if err := f.Close(); err != nil {
@@ -376,11 +379,11 @@ func (u *Updater) download(ctx context.Context, l Latest) (Pending, error) {
 	sum := hex.EncodeToString(h.Sum(nil))
 	if l.SHA256 != "" && sum != l.SHA256 {
 		os.Remove(tmp)
-		return Pending{}, fmt.Errorf("SHA-256 校验失败：清单 %s，实际 %s", l.SHA256, sum)
+		return Pending{}, i18n.Errorf("SHA-256 校验失败：清单 %s，实际 %s", l.SHA256, sum)
 	}
 	if l.Size > 0 && n != l.Size {
 		os.Remove(tmp)
-		return Pending{}, fmt.Errorf("大小不符：清单 %d，实际 %d", l.Size, n)
+		return Pending{}, i18n.Errorf("大小不符：清单 %d，实际 %d", l.Size, n)
 	}
 	dst := filepath.Join(u.dir, "rsagent-"+sanitize(l.Version)+exeSuffix())
 	_ = os.Remove(dst)
@@ -428,7 +431,7 @@ func (u *Updater) AutoCheckLoop(ctx context.Context) {
 	for {
 		if u.Status().AutoCheck && Parse(u.Status().Current).valid {
 			if st, err := u.Check(ctx); err == nil && st.Available {
-				u.log.Info("发现新版本", "current", st.Current, "latest", st.Latest.Version)
+				u.log.Info(i18n.T("发现新版本"), "current", st.Current, "latest", st.Latest.Version)
 			}
 		}
 		select {
@@ -497,7 +500,7 @@ func VerifyFile(path, sum string) error {
 	}
 	got := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(got, sum) {
-		return fmt.Errorf("SHA-256 不符：期望 %s，实际 %s", sum, got)
+		return i18n.Errorf("SHA-256 不符：期望 %s，实际 %s", sum, got)
 	}
 	return nil
 }
@@ -523,7 +526,7 @@ func ReplaceExecutable(target, src string) error {
 	_ = os.Remove(old)
 	if _, err := os.Stat(target); err == nil {
 		if err := os.Rename(target, old); err != nil {
-			return fmt.Errorf("改名旧程序: %w", err)
+			return i18n.Errorf("改名旧程序: %w", err)
 		}
 	}
 	if err := copyFile(src, target); err != nil {
@@ -531,7 +534,7 @@ func ReplaceExecutable(target, src string) error {
 		if _, serr := os.Stat(old); serr == nil {
 			_ = os.Rename(old, target)
 		}
-		return fmt.Errorf("写入新程序: %w", err)
+		return i18n.Errorf("写入新程序: %w", err)
 	}
 	return nil
 }

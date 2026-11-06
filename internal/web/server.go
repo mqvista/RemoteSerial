@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"rsagent/internal/i18n"
 	"time"
 
 	"rsagent/internal/bridge"
@@ -105,7 +106,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, src Source) error {
 		IdleTimeout:       120 * time.Second,
 		ConnState: func(c net.Conn, st http.ConnState) {
 			if st == http.StateNew && s.deps.Log != nil {
-				s.deps.Log.Debug("HTTP 新连接", "source", src, "remote", c.RemoteAddr().String())
+				s.deps.Log.Debug(i18n.T("HTTP 新连接"), "source", src, "remote", c.RemoteAddr().String())
 			}
 		},
 	}

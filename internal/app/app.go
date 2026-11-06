@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"rsagent/internal/i18n"
 	"time"
 
 	"rsagent/internal/bridge"
@@ -38,13 +39,14 @@ func Run(ctx context.Context, o Options) error {
 	}
 	paths := config.ResolvePaths(o.DataDir)
 	if err := paths.Ensure(); err != nil {
-		return fmt.Errorf("创建数据目录 %s: %w", paths.DataDir, err)
+		return i18n.Errorf("创建数据目录 %s: %w", paths.DataDir, err)
 	}
 
 	cfg, created, err := config.Load(paths.ConfigFile)
 	if err != nil {
 		return err
 	}
+	i18n.SetLang(i18n.Resolve(cfg.Language))
 	if o.LogLevel != "" {
 		cfg.LogLevel = o.LogLevel
 	}
@@ -62,9 +64,9 @@ func Run(ctx context.Context, o Options) error {
 	}
 	defer lg.Close()
 
-	lg.Info("rsagent 启动", "version", buildinfo.Version, "commit", buildinfo.Commit, "dataDir", paths.DataDir)
+	lg.Info(i18n.T("rsagent 启动"), "version", buildinfo.Version, "commit", buildinfo.Commit, "dataDir", paths.DataDir)
 	if created {
-		lg.Info("已生成默认配置", "file", paths.ConfigFile)
+		lg.Info(i18n.T("已生成默认配置"), "file", paths.ConfigFile)
 	}
 
 	hub := web.NewHub()
@@ -97,13 +99,13 @@ func Run(ctx context.Context, o Options) error {
 			addr := fmt.Sprintf(":%d", cfg.Tailscale.WebPort)
 			ln, err := n.Listen("tcp", addr)
 			if err != nil {
-				lg.Error("tailnet 管理界面监听失败", "addr", addr, "err", err)
+				lg.Error(i18n.T("tailnet 管理界面监听失败"), "addr", addr, "err", err)
 				return
 			}
-			lg.Info("tailnet 管理界面已监听", "port", cfg.Tailscale.WebPort)
+			lg.Info(i18n.T("tailnet 管理界面已监听"), "port", cfg.Tailscale.WebPort)
 			go func() {
 				if err := srv.Serve(ctx, ln, web.SourceTailnet); err != nil && !errors.Is(err, net.ErrClosed) {
-					lg.Debug("tailnet 管理界面监听结束", "err", err)
+					lg.Debug(i18n.T("tailnet 管理界面监听结束"), "err", err)
 				}
 			}()
 			bridges.SetListener(n.Listen)
@@ -142,24 +144,24 @@ func Run(ctx context.Context, o Options) error {
 	})
 
 	if node.HasState() {
-		lg.Info("发现已保存的节点状态，自动上线")
+		lg.Info(i18n.T("发现已保存的节点状态，自动上线"))
 		if err := node.Start(ctx, "", nil); err != nil {
-			lg.Error("自动上线失败", "err", err)
+			lg.Error(i18n.T("自动上线失败"), "err", err)
 		}
 	} else if key := os.Getenv("RSAGENT_AUTH_KEY"); key != "" {
 		// 无人值守部署：环境变量给 key（和 tag），首次启动自动入网。key 不写日志。
 		tags := SplitTags(os.Getenv("RSAGENT_TAGS"))
-		lg.Info("用环境变量 RSAGENT_AUTH_KEY 自动登录", "tags", tags)
+		lg.Info(i18n.T("用环境变量 RSAGENT_AUTH_KEY 自动登录"), "tags", tags)
 		if err := node.Start(ctx, key, tags); err != nil {
-			lg.Error("自动登录失败", "err", err)
+			lg.Error(i18n.T("自动登录失败"), "err", err)
 		} else if len(tags) > 0 {
 			cfg.Tailscale.Tags = tags
 			if err := cfg.Save(paths.ConfigFile); err != nil {
-				lg.Error("保存配置失败", "err", err)
+				lg.Error(i18n.T("保存配置失败"), "err", err)
 			}
 		}
 	} else {
-		lg.Info("节点未登录，等待在界面输入 auth key")
+		lg.Info(i18n.T("节点未登录，等待在界面输入 auth key"))
 	}
 
 	// 服务模式启动时，前一个实例可能还占着端口（例如刚从单进程切换过来），重试 30 秒。
@@ -170,7 +172,7 @@ func Run(ctx context.Context, o Options) error {
 		if err == nil || time.Now().After(deadline) || ctx.Err() != nil {
 			break
 		}
-		lg.Warn("本机管理界面端口被占用，稍后重试", "addr", cfg.Listen, "err", err)
+		lg.Warn(i18n.T("本机管理界面端口被占用，稍后重试"), "addr", cfg.Listen, "err", err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(2 * time.Second):
@@ -179,18 +181,18 @@ func Run(ctx context.Context, o Options) error {
 	if err != nil {
 		bridges.StopAll()
 		_ = node.Stop()
-		return fmt.Errorf("监听 %s: %w", cfg.Listen, err)
+		return i18n.Errorf("监听 %s: %w", cfg.Listen, err)
 	}
-	lg.Info("本机管理界面已监听", "url", "http://"+cfg.Listen+"/")
+	lg.Info(i18n.T("本机管理界面已监听"), "url", "http://"+cfg.Listen+"/")
 	err = srv.Serve(ctx, ln, web.SourceLocal)
 	bridges.StopAll()
 	if stopErr := node.Stop(); stopErr != nil {
-		lg.Warn("停止节点", "err", stopErr)
+		lg.Warn(i18n.T("停止节点"), "err", stopErr)
 	}
 	if err != nil {
-		lg.Error("管理界面退出", "err", err)
+		lg.Error(i18n.T("管理界面退出"), "err", err)
 		return err
 	}
-	lg.Info("rsagent 退出")
+	lg.Info(i18n.T("rsagent 退出"))
 	return nil
 }

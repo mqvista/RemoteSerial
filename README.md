@@ -53,7 +53,15 @@ rsagent version
 make all
 make deb VERSION=0.4.0 ARCH=arm64    # 需要 nfpm
 make manifest VERSION=0.4.0
+
+# 仅 macOS 主机（需要 Xcode 命令行工具，串口枚举与窗口依赖 CGO）
+make darwin                          # dist/rsagent-darwin-{arm64,amd64}
+make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agent.app 及 rsagent-macos.zip，ad-hoc 签名
 ```
+
+macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。
+
+界面语言支持 English 与正體中文，在网页右上角切换，保存在配置的 `language`（`en` / `zh-TW`，留空跟随系统）。网页、托盘/菜单栏、后端返回的提示与日志都跟随这一设置；命令行输出始终为英文。后端文字的译文在 `internal/i18n/catalog.go`，`go test ./internal/i18n` 会检查是否有遗漏。
 
 发布：打 tag `v0.4.0` 推送后，`.github/workflows/release.yml` 自动构建全部平台、deb、安装包、`manifest.json` 与 `SHA256SUMS` 并创建 GitHub Release。程序内自更新默认读取该 Release 的 `manifest.json`。
 

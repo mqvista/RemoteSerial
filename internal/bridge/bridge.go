@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"rsagent/internal/i18n"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -84,7 +85,7 @@ type Bridge struct {
 	mu           sync.Mutex
 	state        State
 	resolved     string
-	lastErr      string
+	lastErr      i18n.Text // 渲染状态时按当前语言翻译
 	port         serial.Port
 	active       rfc2217.Mode
 	paramsBy     string
@@ -160,7 +161,7 @@ func (b *Bridge) Status() Status {
 		FromDevice:   b.fromDevice.Load(),
 		ToDevice:     b.toDevice.Load(),
 		Viewers:      len(b.subs),
-		LastError:    b.lastErr,
+		LastError:    i18n.String(b.lastErr),
 	}
 }
 
@@ -188,7 +189,7 @@ func (b *Bridge) WriteDevice(p []byte) error {
 	port := b.port
 	b.mu.Unlock()
 	if port == nil {
-		return errors.New("串口未打开")
+		return i18n.New("串口未打开")
 	}
 	n, err := port.Write(p)
 	b.toDevice.Add(int64(n))
@@ -207,7 +208,7 @@ func (b *Bridge) start(listen ListenFunc) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	b.cancel = cancel
-	b.setStateLocked(StateWaitingDevice, "")
+	b.setStateLocked(StateWaitingDevice, nil)
 	b.mu.Unlock()
 	b.notify()
 
@@ -230,7 +231,7 @@ func (b *Bridge) stop(next State) {
 	b.mu.Unlock()
 	if cancel == nil {
 		b.mu.Lock()
-		b.setStateLocked(next, "")
+		b.setStateLocked(next, nil)
 		b.mu.Unlock()
 		b.notify()
 		return
@@ -239,24 +240,24 @@ func (b *Bridge) stop(next State) {
 	for _, ln := range lns {
 		_ = ln.Close()
 	}
-	b.dropClient("桥接停止")
+	b.dropClient(i18n.T("桥接停止"))
 	b.closePort()
 	b.wg.Wait()
 	_ = b.StopCapture()
 	b.mu.Lock()
-	b.setStateLocked(next, "")
+	b.setStateLocked(next, nil)
 	b.mu.Unlock()
 	b.notify()
 }
 
 // kick 断开当前客户端。
 func (b *Bridge) kick() bool {
-	return b.dropClient("被管理员断开")
+	return b.dropClient(i18n.T("被管理员断开"))
 }
 
-func (b *Bridge) setStateLocked(s State, errMsg string) {
+func (b *Bridge) setStateLocked(s State, errMsg i18n.Text) {
 	b.state = s
-	if errMsg != "" {
+	if errMsg != nil {
 		b.lastErr = errMsg
 	}
 }
@@ -274,17 +275,17 @@ func (b *Bridge) deviceLoop(ctx context.Context) {
 	for ctx.Err() == nil {
 		if err := b.openPort(); err != nil {
 			b.mu.Lock()
-			msg := err.Error()
+			msg := i18n.ErrText(err)
 			if isNotFound(err) {
-				msg = "串口不存在，等待设备接入"
+				msg = i18n.M("串口不存在，等待设备接入")
 			} else if isBusy(err) {
-				msg = "串口被其他程序占用"
+				msg = i18n.M("串口被其他程序占用")
 			}
-			changed := b.state != StateWaitingDevice || b.lastErr != msg
+			changed := b.state != StateWaitingDevice || i18n.String(b.lastErr) != msg.String()
 			b.setStateLocked(StateWaitingDevice, msg)
 			b.mu.Unlock()
 			if changed {
-				b.log.Warn("打开串口失败", "err", err)
+				b.log.Warn(i18n.T("打开串口失败"), "err", err)
 				b.notify()
 			}
 			select {
@@ -296,14 +297,14 @@ func (b *Bridge) deviceLoop(ctx context.Context) {
 		}
 
 		b.mu.Lock()
-		b.lastErr = ""
+		b.lastErr = nil
 		if b.client != nil {
-			b.setStateLocked(StateConnected, "")
+			b.setStateLocked(StateConnected, nil)
 		} else {
-			b.setStateLocked(StateListening, "")
+			b.setStateLocked(StateListening, nil)
 		}
 		b.mu.Unlock()
-		b.log.Info("串口已打开", "port", b.resolvedName(), "params", b.activeMode().String())
+		b.log.Info(i18n.T("串口已打开"), "port", b.resolvedName(), "params", b.activeMode().String())
 		b.notify()
 
 		b.readPort(ctx)
@@ -312,9 +313,9 @@ func (b *Bridge) deviceLoop(ctx context.Context) {
 			return
 		}
 		b.mu.Lock()
-		b.setStateLocked(StateWaitingDevice, "串口断开，等待重连")
+		b.setStateLocked(StateWaitingDevice, i18n.M("串口断开，等待重连"))
 		b.mu.Unlock()
-		b.log.Warn("串口断开，等待重连")
+		b.log.Warn(i18n.T("串口断开，等待重连"))
 		b.notify()
 		select {
 		case <-ctx.Done():
@@ -405,7 +406,7 @@ func (b *Bridge) readPort(ctx context.Context) {
 			}
 			if c != nil {
 				if _, werr := c.Write(data); werr != nil {
-					b.dropClient("写入客户端失败: " + werr.Error())
+					b.dropClient(i18n.Sprintf("写入客户端失败: %v", werr))
 				}
 			}
 		}
@@ -415,12 +416,12 @@ func (b *Bridge) readPort(ctx context.Context) {
 			var pe *serial.PortError
 			if errors.As(err, &pe) && pe.Code() == serial.PortClosed && b.holdsPort(p) {
 				if _, serr := p.GetModemStatusBits(); serr == nil {
-					b.log.Debug("串口读取被中止后恢复", "err", err)
+					b.log.Debug(i18n.T("串口读取被中止后恢复"), "err", err)
 					continue
 				}
 			}
 			if ctx.Err() == nil && !errors.Is(err, io.EOF) {
-				b.log.Debug("串口读取结束", "err", err)
+				b.log.Debug(i18n.T("串口读取结束"), "err", err)
 			}
 			return
 		}
@@ -458,7 +459,7 @@ func (b *Bridge) SetMode(m rfc2217.Mode) error {
 	b.paramsBy = "client"
 	b.mu.Unlock()
 	if changed {
-		b.log.Info("客户端修改串口参数", "params", m.String())
+		b.log.Info(i18n.T("客户端修改串口参数"), "params", m.String())
 	}
 	return nil
 }
@@ -470,7 +471,7 @@ func (b *Bridge) SetDTR(on bool) error {
 	b.dtr = on
 	b.mu.Unlock()
 	if p == nil {
-		return errors.New("串口未打开")
+		return i18n.New("串口未打开")
 	}
 	return p.SetDTR(on)
 }
@@ -482,7 +483,7 @@ func (b *Bridge) SetRTS(on bool) error {
 	b.rts = on
 	b.mu.Unlock()
 	if p == nil {
-		return errors.New("串口未打开")
+		return i18n.New("串口未打开")
 	}
 	return p.SetRTS(on)
 }
@@ -507,7 +508,7 @@ func (b *Bridge) Break(d time.Duration) error {
 	p := b.port
 	b.mu.Unlock()
 	if p == nil {
-		return errors.New("串口未打开")
+		return i18n.New("串口未打开")
 	}
 	return p.Break(d)
 }
@@ -518,7 +519,7 @@ func (b *Bridge) Purge(rx, tx bool) error {
 	p := b.port
 	b.mu.Unlock()
 	if p == nil {
-		return errors.New("串口未打开")
+		return i18n.New("串口未打开")
 	}
 	var err error
 	if rx {
@@ -538,7 +539,7 @@ func (b *Bridge) ModemStatus() (rfc2217.ModemStatus, error) {
 	p := b.port
 	b.mu.Unlock()
 	if p == nil {
-		return rfc2217.ModemStatus{}, errors.New("串口未打开")
+		return rfc2217.ModemStatus{}, i18n.New("串口未打开")
 	}
 	bits, err := p.GetModemStatusBits()
 	if err != nil {
@@ -566,7 +567,7 @@ func (b *Bridge) restoreConfigMode() {
 		if changedMode {
 			if sm, err := serialMode(m); err == nil {
 				if err := p.SetMode(sm); err != nil {
-					b.log.Debug("恢复配置参数失败", "err", err)
+					b.log.Debug(i18n.T("恢复配置参数失败"), "err", err)
 				}
 			}
 		}
@@ -575,7 +576,7 @@ func (b *Bridge) restoreConfigMode() {
 			_ = p.SetRTS(true)
 		}
 	}
-	b.log.Info("已恢复配置的串口参数", "params", m.String())
+	b.log.Info(i18n.T("已恢复配置的串口参数"), "params", m.String())
 	b.notify()
 }
 
@@ -587,9 +588,9 @@ func (b *Bridge) listenLoop(ctx context.Context, listen ListenFunc, addr, kind s
 		ln, err := listen("tcp", addr)
 		if err != nil {
 			b.mu.Lock()
-			b.setStateLocked(StateError, kind+" 监听失败: "+err.Error())
+			b.setStateLocked(StateError, i18n.M("%s 监听失败: %v", kind, err))
 			b.mu.Unlock()
-			b.log.Error("TCP 监听失败", "kind", kind, "addr", addr, "err", err)
+			b.log.Error(i18n.T("TCP 监听失败"), "kind", kind, "addr", addr, "err", err)
 			b.notify()
 			select {
 			case <-ctx.Done():
@@ -601,7 +602,7 @@ func (b *Bridge) listenLoop(ctx context.Context, listen ListenFunc, addr, kind s
 		b.mu.Lock()
 		b.listeners = append(b.listeners, ln)
 		b.mu.Unlock()
-		b.log.Info("TCP 已监听", "kind", kind, "addr", addr)
+		b.log.Info(i18n.T("TCP 已监听"), "kind", kind, "addr", addr)
 
 		for {
 			c, err := ln.Accept()
@@ -609,7 +610,7 @@ func (b *Bridge) listenLoop(ctx context.Context, listen ListenFunc, addr, kind s
 				if ctx.Err() != nil {
 					return
 				}
-				b.log.Warn("接受连接失败", "kind", kind, "err", err)
+				b.log.Warn(i18n.T("接受连接失败"), "kind", kind, "err", err)
 				break
 			}
 			b.acceptClient(ctx, c, kind)
@@ -627,7 +628,7 @@ func (b *Bridge) acceptClient(ctx context.Context, c net.Conn, kind string) {
 	remote := c.RemoteAddr().String()
 	label := remote
 	if kind == "local" {
-		label = "本机 " + remote
+		label = i18n.Sprintf("本机 %s", remote)
 	} else if b.whois != nil {
 		wctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		if who := b.whois(wctx, remote); who != "" {
@@ -640,13 +641,13 @@ func (b *Bridge) acceptClient(ctx context.Context, c net.Conn, kind string) {
 	if b.client != nil {
 		if b.cfg.ClientPolicy == "reject" {
 			b.mu.Unlock()
-			b.log.Info("已有客户端，拒绝新连接", "new", label)
+			b.log.Info(i18n.T("已有客户端，拒绝新连接"), "new", label)
 			_, _ = c.Write([]byte("rsagent: port busy\r\n"))
 			_ = c.Close()
 			return
 		}
 		b.mu.Unlock()
-		b.dropClient("被新连接替换")
+		b.dropClient(i18n.T("被新连接替换"))
 		b.mu.Lock()
 	}
 	tuneConn(c)
@@ -657,7 +658,7 @@ func (b *Bridge) acceptClient(ctx context.Context, c net.Conn, kind string) {
 		srv.OnChange = b.notify
 		b.mu.Unlock()
 		if err := srv.Start(); err != nil {
-			b.log.Warn("RFC2217 协商发送失败", "err", err)
+			b.log.Warn(i18n.T("RFC2217 协商发送失败"), "err", err)
 			_ = c.Close()
 			return
 		}
@@ -672,10 +673,10 @@ func (b *Bridge) acceptClient(ctx context.Context, c net.Conn, kind string) {
 	b.clientSince = time.Now()
 	b.clientCancel = ccancel
 	if b.port != nil {
-		b.setStateLocked(StateConnected, "")
+		b.setStateLocked(StateConnected, nil)
 	}
 	b.mu.Unlock()
-	b.log.Info("客户端已连接", "client", label, "mode", b.cfg.Mode)
+	b.log.Info(i18n.T("客户端已连接"), "client", label, "mode", b.cfg.Mode)
 	b.notify()
 
 	b.wg.Add(1)
@@ -701,7 +702,7 @@ func (b *Bridge) serveClient(ctx context.Context, client io.ReadWriteCloser, nc 
 			b.mu.Unlock()
 			if p != nil {
 				if wn, werr := p.Write(buf[:n]); werr != nil {
-					b.log.Debug("写入串口失败", "err", werr)
+					b.log.Debug(i18n.T("写入串口失败"), "err", werr)
 				} else if wn > 0 {
 					b.captureTx(buf[:wn])
 				}
@@ -711,12 +712,12 @@ func (b *Bridge) serveClient(ctx context.Context, client io.ReadWriteCloser, nc 
 			if ctx.Err() != nil {
 				return
 			}
-			reason := "客户端断开"
+			reason := i18n.T("客户端断开")
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
-				reason = "空闲超时"
+				reason = i18n.T("空闲超时")
 			} else if !errors.Is(err, io.EOF) {
-				reason = "读取客户端失败: " + err.Error()
+				reason = i18n.Sprintf("读取客户端失败: %v", err)
 			}
 			b.dropClientConn(client, reason)
 			return
@@ -751,7 +752,7 @@ func (b *Bridge) dropClientConn(c io.ReadWriteCloser, reason string) {
 	b.clientSince = time.Time{}
 	b.clientCancel = nil
 	if b.state == StateConnected {
-		b.setStateLocked(StateListening, "")
+		b.setStateLocked(StateListening, nil)
 	}
 	b.mu.Unlock()
 	if cancel != nil {
@@ -759,7 +760,7 @@ func (b *Bridge) dropClientConn(c io.ReadWriteCloser, reason string) {
 	}
 	_ = c.Close()
 	b.restoreConfigMode()
-	b.log.Info("客户端已断开", "client", label, "reason", reason)
+	b.log.Info(i18n.T("客户端已断开"), "client", label, "reason", reason)
 	b.notify()
 }
 

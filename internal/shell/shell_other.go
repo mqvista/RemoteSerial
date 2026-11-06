@@ -1,11 +1,12 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package shell
 
 import (
 	"context"
-	"errors"
 	"log/slog"
+
+	"rsagent/internal/i18n"
 )
 
 // Options 是壳层参数。非 Windows 平台没有桌面壳。
@@ -29,5 +30,5 @@ func (*Shell) Quit() {}
 
 // Run 返回不支持错误。
 func (*Shell) Run(context.Context) error {
-	return errors.New("桌面壳仅支持 Windows，Linux 站点请用 run 子命令并配合 systemd")
+	return i18n.New("桌面壳仅支持 Windows 与 macOS，Linux 站点请用 run 子命令并配合 systemd")
 }

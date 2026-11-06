@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"rsagent/internal/i18n"
 	"strings"
 )
 
@@ -17,14 +18,14 @@ type loginRequest struct {
 func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		writeError(w, http.StatusBadRequest, i18n.T("请求体格式错误"))
 		return
 	}
 	req.AuthKey = strings.TrimSpace(req.AuthKey)
 	req.Hostname = strings.TrimSpace(req.Hostname)
 	req.ControlURL = strings.TrimSpace(req.ControlURL)
 	if req.AuthKey == "" && !s.deps.Node.HasState() {
-		writeError(w, http.StatusBadRequest, "auth key 不能为空")
+		writeError(w, http.StatusBadRequest, i18n.T("auth key 不能为空"))
 		return
 	}
 	tags := make([]string, 0, len(req.Tags))
@@ -34,7 +35,7 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if !strings.HasPrefix(t, "tag:") {
-			writeError(w, http.StatusBadRequest, "tag 必须以 tag: 开头: "+t)
+			writeError(w, http.StatusBadRequest, i18n.Sprintf("tag 必须以 tag: 开头: %s", t))
 			return
 		}
 		tags = append(tags, t)
@@ -43,7 +44,7 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 	// 节点在运行但卡在需要登录的状态：先停掉，让下面的改名、改 tag 和重新登录都能进行。
 	if st := s.deps.Node.Snapshot().State; req.AuthKey != "" && (st == "NeedsLogin" || st == "NeedsMachineAuth" || st == "Error") {
 		if err := s.deps.Node.Stop(); err != nil {
-			s.deps.Log.Warn("重新登录前停止节点失败", "err", err)
+			s.deps.Log.Warn(i18n.T("重新登录前停止节点失败"), "err", err)
 		}
 	}
 	if req.Hostname != "" || req.ControlURL != s.deps.Config.Tailscale.ControlURL {
@@ -56,7 +57,7 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		s.deps.Config.Tailscale.ControlURL = req.ControlURL
 		if err := s.deps.Config.Save(s.deps.Paths.ConfigFile); err != nil {
-			s.deps.Log.Error("保存配置失败", "err", err)
+			s.deps.Log.Error(i18n.T("保存配置失败"), "err", err)
 		}
 	}
 
@@ -67,10 +68,10 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 	if len(tags) > 0 && strings.Join(tags, ",") != strings.Join(s.deps.Config.Tailscale.Tags, ",") {
 		s.deps.Config.Tailscale.Tags = tags
 		if err := s.deps.Config.Save(s.deps.Paths.ConfigFile); err != nil {
-			s.deps.Log.Error("保存配置失败", "err", err)
+			s.deps.Log.Error(i18n.T("保存配置失败"), "err", err)
 		}
 	}
-	s.deps.Log.Info("已发起 Tailscale 登录", "hostname", s.deps.Config.Tailscale.Hostname, "tags", tags, "oauth", strings.HasPrefix(req.AuthKey, "tskey-client-"), "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("已发起 Tailscale 登录"), "hostname", s.deps.Config.Tailscale.Hostname, "tags", tags, "oauth", strings.HasPrefix(req.AuthKey, "tskey-client-"), "by", requesterLabel(r))
 	writeJSON(w, http.StatusAccepted, s.deps.Node.Snapshot())
 }
 
@@ -86,7 +87,7 @@ func (s *Server) handleTailscaleStart(w http.ResponseWriter, r *http.Request) {
 // POST /api/tailscale/stop：停止但保留登录状态。
 func (s *Server) handleTailscaleStop(w http.ResponseWriter, r *http.Request) {
 	if SourceOf(r) == SourceTailnet {
-		writeError(w, http.StatusForbidden, "从 tailnet 侧停止节点会切断你自己的连接，请在远端本机操作")
+		writeError(w, http.StatusForbidden, i18n.T("从 tailnet 侧停止节点会切断你自己的连接，请在远端本机操作"))
 		return
 	}
 	if err := s.deps.Node.Stop(); err != nil {
@@ -99,7 +100,7 @@ func (s *Server) handleTailscaleStop(w http.ResponseWriter, r *http.Request) {
 // POST /api/tailscale/logout：退出并清除状态。
 func (s *Server) handleTailscaleLogout(w http.ResponseWriter, r *http.Request) {
 	if SourceOf(r) == SourceTailnet {
-		writeError(w, http.StatusForbidden, "从 tailnet 侧退出登录会切断你自己的连接，请在远端本机操作")
+		writeError(w, http.StatusForbidden, i18n.T("从 tailnet 侧退出登录会切断你自己的连接，请在远端本机操作"))
 		return
 	}
 	if err := s.deps.Node.Logout(r.Context()); err != nil {
@@ -128,7 +129,7 @@ func (s *Server) handleTailscalePeers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTailscaleRoutesGet(w http.ResponseWriter, r *http.Request) {
 	rs, err := s.deps.Node.Routes(r.Context())
 	if err != nil {
-		s.deps.Log.Warn("读取路由状态失败", "err", err)
+		s.deps.Log.Warn(i18n.T("读取路由状态失败"), "err", err)
 	}
 	writeJSON(w, http.StatusOK, rs)
 }
@@ -139,7 +140,7 @@ func (s *Server) handleTailscaleRoutesPut(w http.ResponseWriter, r *http.Request
 		Routes []string `json:"routes"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		writeError(w, http.StatusBadRequest, i18n.T("请求体格式错误"))
 		return
 	}
 	clean := make([]string, 0, len(req.Routes))
@@ -158,10 +159,10 @@ func (s *Server) handleTailscaleRoutesPut(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.deps.Config.Save(s.deps.Paths.ConfigFile); err != nil {
-		writeError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, i18n.Sprintf("保存配置失败: %v", err))
 		return
 	}
-	s.deps.Log.Info("已更新子网路由", "routes", clean, "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("已更新子网路由"), "routes", clean, "by", requesterLabel(r))
 	rs, _ := s.deps.Node.Routes(r.Context())
 	writeJSON(w, http.StatusOK, rs)
 }
@@ -172,7 +173,7 @@ func (s *Server) handleTailscalePing(w http.ResponseWriter, r *http.Request) {
 		IP string `json:"ip"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		writeError(w, http.StatusBadRequest, i18n.T("请求体格式错误"))
 		return
 	}
 	res, err := s.deps.Node.Ping(r.Context(), req.IP)
@@ -190,7 +191,7 @@ func (s *Server) handleTailscaleNetcheck(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.deps.Log.Info("netcheck 完成", "udp", rep.UDP, "hardNAT", rep.HardNAT != nil && *rep.HardNAT, "preferredDERP", rep.PreferredDERP, "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("netcheck 完成"), "udp", rep.UDP, "hardNAT", rep.HardNAT != nil && *rep.HardNAT, "preferredDERP", rep.PreferredDERP, "by", requesterLabel(r))
 	writeJSON(w, http.StatusOK, rep)
 }
 

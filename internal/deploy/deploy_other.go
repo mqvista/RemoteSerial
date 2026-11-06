@@ -3,10 +3,9 @@
 package deploy
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
+	"rsagent/internal/i18n"
 )
 
 func isElevated() bool { return os.Geteuid() == 0 }
@@ -27,18 +26,18 @@ func runAction(o Options, action string) error {
 	case ActionUpdateApply:
 		return updateApplyAndRestartService(o)
 	case ActionTaskInstall, ActionTaskRemove, ActionFirewallAdd, ActionFirewallRemove, ActionWebView2Install:
-		return fmt.Errorf("动作 %q 仅支持 Windows", action)
+		return i18n.Errorf("动作 %q 仅支持 Windows", action)
 	}
-	return fmt.Errorf("未知动作 %q", action)
+	return i18n.Errorf("未知动作 %q", action)
 }
 
 func elevateAndWait(Options, string) error {
-	return errors.New("需要 root 权限：请用 sudo 运行 rsagent deploy <action>")
+	return i18n.New("需要 root 权限：请用 sudo 运行 rsagent deploy <action>")
 }
 
 func spawnDetached(o Options, action string, elevate bool) error {
 	if elevate {
-		return errors.New("需要 root 权限：请用 sudo 运行 rsagent deploy " + action)
+		return i18n.Errorf("需要 root 权限：请用 sudo 运行 rsagent deploy %s", action)
 	}
 	args := []string{"deploy", action, "--data-dir", o.DataDir}
 	if o.Listen != "" {

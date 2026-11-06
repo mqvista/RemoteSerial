@@ -2,7 +2,7 @@ package bridge
 
 import (
 	"errors"
-	"fmt"
+	"rsagent/internal/i18n"
 	"sort"
 	"strings"
 
@@ -14,7 +14,7 @@ import (
 )
 
 // ErrDeviceNotFound 表示按 USB 标识没有匹配到任何串口。
-var ErrDeviceNotFound = errors.New("没有匹配的 USB 串口")
+var ErrDeviceNotFound = i18n.New("没有匹配的 USB 串口")
 
 // PortInfo 是枚举到的一个串口。
 type PortInfo struct {
@@ -104,13 +104,13 @@ func trailingNumber(s string) int {
 func resolvePort(cfg config.Bridge) (string, error) {
 	if cfg.Match == nil {
 		if cfg.Port == "" {
-			return "", fmt.Errorf("未配置串口")
+			return "", i18n.Errorf("未配置串口")
 		}
 		return cfg.Port, nil
 	}
 	ports, err := ListPorts()
 	if err != nil {
-		return "", fmt.Errorf("枚举串口: %w", err)
+		return "", i18n.Errorf("枚举串口: %w", err)
 	}
 	wantVID := strings.ToUpper(strings.TrimSpace(cfg.Match.VID))
 	wantPID := strings.ToUpper(strings.TrimSpace(cfg.Match.PID))
@@ -153,7 +153,7 @@ func resolvePort(cfg config.Bridge) (string, error) {
 // serialMode 把参数转换为串口库的 Mode。
 func serialMode(mode rfc2217.Mode) (*serial.Mode, error) {
 	if mode.Baud <= 0 {
-		return nil, fmt.Errorf("波特率非法: %d", mode.Baud)
+		return nil, i18n.Errorf("波特率非法: %d", mode.Baud)
 	}
 	m := &serial.Mode{BaudRate: mode.Baud, DataBits: mode.DataBits}
 	if m.DataBits == 0 {
@@ -171,7 +171,7 @@ func serialMode(mode rfc2217.Mode) (*serial.Mode, error) {
 	case 'S':
 		m.Parity = serial.SpaceParity
 	default:
-		return nil, fmt.Errorf("校验位非法: %q", string(mode.Parity))
+		return nil, i18n.Errorf("校验位非法: %q", string(mode.Parity))
 	}
 	switch mode.StopBits {
 	case 0, 1:
@@ -181,7 +181,7 @@ func serialMode(mode rfc2217.Mode) (*serial.Mode, error) {
 	case 2:
 		m.StopBits = serial.TwoStopBits
 	default:
-		return nil, fmt.Errorf("停止位非法: %v", mode.StopBits)
+		return nil, i18n.Errorf("停止位非法: %v", mode.StopBits)
 	}
 	return m, nil
 }

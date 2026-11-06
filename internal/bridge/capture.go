@@ -1,10 +1,10 @@
 package bridge
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"sync"
 	"time"
 )
@@ -33,7 +33,7 @@ func (b *Bridge) StartCapture(dir string) (string, error) {
 	b.mu.Lock()
 	if b.cap != nil {
 		b.mu.Unlock()
-		return "", errors.New("已在录制")
+		return "", i18n.New("已在录制")
 	}
 	b.mu.Unlock()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -53,7 +53,7 @@ func (b *Bridge) StartCapture(dir string) (string, error) {
 	b.mu.Lock()
 	b.cap = c
 	b.mu.Unlock()
-	b.log.Info("开始录制串口流量", "base", base)
+	b.log.Info(i18n.T("开始录制串口流量"), "base", base)
 	b.notify()
 	return base, nil
 }
@@ -65,13 +65,13 @@ func (b *Bridge) StopCapture() error {
 	b.cap = nil
 	b.mu.Unlock()
 	if c == nil {
-		return errors.New("未在录制")
+		return i18n.New("未在录制")
 	}
 	c.mu.Lock()
 	_ = c.rx.Close()
 	_ = c.tx.Close()
 	c.mu.Unlock()
-	b.log.Info("停止录制串口流量", "base", c.base, "rxBytes", c.rxBytes, "txBytes", c.txBytes)
+	b.log.Info(i18n.T("停止录制串口流量"), "base", c.base, "rxBytes", c.rxBytes, "txBytes", c.txBytes)
 	b.notify()
 	return nil
 }

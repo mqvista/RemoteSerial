@@ -15,12 +15,12 @@ import (
 var distFS embed.FS
 
 const notBuiltPage = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>rsagent</title>
+<html lang="en"><head><meta charset="utf-8"><title>rsagent</title>
 <style>body{font-family:system-ui,sans-serif;margin:3rem auto;max-width:40rem;line-height:1.6}code{background:#eee;padding:.1em .3em}</style>
 </head><body>
-<h1>rsagent 已运行</h1>
-<p>前端尚未构建。在 <code>web/</code> 目录执行 <code>npm install</code> 和 <code>npm run build</code>，或直接运行仓库根目录的 <code>build.ps1</code>，然后重新编译。</p>
-<p>API 可用：<a href="/api/status">/api/status</a>、<a href="/api/logs">/api/logs</a>、<a href="/api/settings">/api/settings</a>。</p>
+<h1>rsagent is running</h1>
+<p>The frontend has not been built. Run <code>npm install</code> and <code>npm run build</code> in <code>web/</code> (or <code>make web</code> / <code>build.ps1</code>), then rebuild.</p>
+<p>The API is available: <a href="/api/status">/api/status</a>, <a href="/api/logs">/api/logs</a>, <a href="/api/settings">/api/settings</a>.</p>
 </body></html>`
 
 func staticHandler() http.Handler {

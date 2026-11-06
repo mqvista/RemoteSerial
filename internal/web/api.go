@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"rsagent/internal/i18n"
 	"strconv"
 	"time"
 
@@ -74,6 +75,8 @@ type StatusResponse struct {
 	Source        Source           `json:"source,omitempty"`
 	Identity      *tsnode.Identity `json:"identity,omitempty"`
 	AccessWarning bool             `json:"accessWarning"` // 白名单为空
+	Language      string           `json:"language"`      // 当前界面语言 en | zh-TW
+	LanguageAuto  bool             `json:"languageAuto"`  // 配置未指定，跟随系统
 	Tailscale     tsnode.Snapshot  `json:"tailscale"`
 	WebPort       int              `json:"webPort"`
 	Bridges       []bridge.Status  `json:"bridges"`
@@ -97,6 +100,8 @@ func (s *Server) buildStatus(r *http.Request) StatusResponse {
 		DataDir:       s.deps.Paths.DataDir,
 		Listen:        s.deps.Config.Listen,
 		AccessWarning: len(s.deps.Config.Access.AllowedLogins) == 0,
+		Language:      string(i18n.Current()),
+		LanguageAuto:  s.deps.Config.Language == "",
 		WebPort:       s.deps.Config.Tailscale.WebPort,
 		Bridges:       []bridge.Status{},
 	}
@@ -156,11 +161,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 // handleUIShow 由第二个实例调用，唤起本进程的窗口。只接受本机来源。
 func (s *Server) handleUIShow(w http.ResponseWriter, r *http.Request) {
 	if SourceOf(r) != SourceLocal {
-		writeError(w, http.StatusForbidden, "仅限本机")
+		writeError(w, http.StatusForbidden, i18n.T("仅限本机"))
 		return
 	}
 	if s.deps.ShowUI == nil {
-		writeError(w, http.StatusNotFound, "本进程没有桌面壳")
+		writeError(w, http.StatusNotFound, i18n.T("本进程没有桌面壳"))
 		return
 	}
 	s.deps.ShowUI()

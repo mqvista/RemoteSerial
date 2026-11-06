@@ -26,6 +26,8 @@ import (
 	"fyne.io/systray"
 	webview2 "github.com/jchv/go-webview2"
 	"golang.org/x/sys/windows"
+
+	"rsagent/internal/i18n"
 )
 
 //go:embed icon.ico
@@ -49,6 +51,12 @@ type Shell struct {
 	wv          webview2.WebView
 	noWebView2  bool
 	statusTitle string
+	items       *trayItems
+	poke        chan struct{} // 语言变化后立即刷新状态行
+}
+
+type trayItems struct {
+	open, status, browser, data, quit *systray.MenuItem
 }
 
 // New 创建壳层，不启动。
@@ -56,7 +64,7 @@ func New(o Options) *Shell {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	return &Shell{o: o, openCh: make(chan struct{}, 1), quitCh: make(chan struct{})}
+	return &Shell{o: o, openCh: make(chan struct{}, 1), quitCh: make(chan struct{}), poke: make(chan struct{}, 1)}
 }
 
 // Open 打开或前置管理窗口，可从任意 goroutine 调用。
@@ -91,6 +99,15 @@ func (s *Shell) Quit() {
 func (s *Shell) Run(ctx context.Context) error {
 	runtime.LockOSThread()
 	baseURL := "http://" + s.o.Listen + "/"
+	i18n.OnChange(func(i18n.Lang) {
+		s.applyTrayLabels()
+		s.mu.Lock()
+		wv := s.wv
+		s.mu.Unlock()
+		if wv != nil {
+			wv.Dispatch(func() { wv.SetTitle(i18n.T("rsagent 远程串口")) })
+		}
+	})
 	go s.runTray(baseURL)
 	s.Open()
 	for {
@@ -124,7 +141,7 @@ func (s *Shell) showWindow(url string) {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				s.o.Log.Error("创建 WebView2 窗口时崩溃", "err", fmt.Sprint(r))
+				s.o.Log.Error(i18n.T("创建 WebView2 窗口时崩溃"), "err", fmt.Sprint(r))
 				wv = nil
 			}
 		}()
@@ -132,7 +149,7 @@ func (s *Shell) showWindow(url string) {
 			DataPath:  dataPath,
 			AutoFocus: true,
 			WindowOptions: webview2.WindowOptions{
-				Title:  "rsagent 远程串口",
+				Title:  i18n.T("rsagent 远程串口"),
 				Width:  1100,
 				Height: 720,
 				Center: true,
@@ -143,8 +160,8 @@ func (s *Shell) showWindow(url string) {
 		s.mu.Lock()
 		s.noWebView2 = true
 		s.mu.Unlock()
-		s.o.Log.Error("无法创建 WebView2 窗口，可能缺少 WebView2 运行时，改用系统浏览器")
-		messageBox("rsagent", "未找到 WebView2 运行时，将改用系统浏览器打开管理界面。\n可从微软官网安装 Evergreen 运行时后重启 rsagent。")
+		s.o.Log.Error(i18n.T("无法创建 WebView2 窗口，可能缺少 WebView2 运行时，改用系统浏览器"))
+		messageBox("rsagent", i18n.T("未找到 WebView2 运行时，将改用系统浏览器打开管理界面。\n可从微软官网安装 Evergreen 运行时后重启 rsagent。"))
 		openBrowser(url)
 		return
 	}
@@ -166,15 +183,20 @@ func (s *Shell) runTray(baseURL string) {
 	runtime.LockOSThread()
 	systray.Run(func() {
 		systray.SetIcon(iconICO)
-		systray.SetTooltip("rsagent 远程串口")
-		mOpen := systray.AddMenuItem("打开控制台", "打开管理界面窗口")
-		mStatus := systray.AddMenuItem("状态：读取中…", "")
-		mStatus.Disable()
+		it := &trayItems{}
+		it.open = systray.AddMenuItem("", "")
+		it.status = systray.AddMenuItem("", "")
+		it.status.Disable()
 		systray.AddSeparator()
-		mBrowser := systray.AddMenuItem("在浏览器中打开", "用系统浏览器打开管理界面")
-		mData := systray.AddMenuItem("打开数据目录", "")
+		it.browser = systray.AddMenuItem("", "")
+		it.data = systray.AddMenuItem("", "")
 		systray.AddSeparator()
-		mQuit := systray.AddMenuItem("退出", "退出托盘与窗口；以服务方式运行的 core 不受影响")
+		it.quit = systray.AddMenuItem("", "")
+		s.mu.Lock()
+		s.items = it
+		s.mu.Unlock()
+		s.applyTrayLabels()
+		mOpen, mStatus, mBrowser, mData, mQuit := it.open, it.status, it.browser, it.data, it.quit
 
 		go func() {
 			for {
@@ -197,7 +219,32 @@ func (s *Shell) runTray(baseURL string) {
 	}, func() {})
 }
 
+// applyTrayLabels 按当前语言设置托盘菜单文字。
+func (s *Shell) applyTrayLabels() {
+	s.mu.Lock()
+	it := s.items
+	s.statusTitle = ""
+	s.mu.Unlock()
+	if it == nil {
+		return
+	}
+	systray.SetTooltip(i18n.T("rsagent 远程串口"))
+	it.open.SetTitle(i18n.T("打开控制台"))
+	it.open.SetTooltip(i18n.T("打开管理界面窗口"))
+	it.status.SetTitle(i18n.T("状态：读取中…"))
+	it.browser.SetTitle(i18n.T("在浏览器中打开"))
+	it.browser.SetTooltip(i18n.T("用系统浏览器打开管理界面"))
+	it.data.SetTitle(i18n.T("打开数据目录"))
+	it.quit.SetTitle(i18n.T("退出"))
+	it.quit.SetTooltip(i18n.T("退出托盘与窗口；以服务方式运行的 core 不受影响"))
+	select {
+	case s.poke <- struct{}{}:
+	default:
+	}
+}
+
 type statusLite struct {
+	Language  string `json:"language"`
 	Mode      string `json:"mode"`
 	Tailscale struct {
 		State string `json:"state"`
@@ -213,10 +260,14 @@ func (s *Shell) statusLoop(baseURL string, item *systray.MenuItem) {
 	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
 	for {
-		title := "状态：core 未响应"
+		title := i18n.T("状态：core 未响应")
 		if resp, err := client.Get(baseURL + "api/status"); err == nil {
 			var st statusLite
 			if json.NewDecoder(resp.Body).Decode(&st) == nil {
+				// core 可能在另一个进程（服务模式），跟随它的语言
+				if l := i18n.Normalize(st.Language); l != "" && l != i18n.Current() {
+					i18n.SetLang(l)
+				}
 				connected := 0
 				for _, b := range st.Bridges {
 					if b.State == "Connected" {
@@ -224,8 +275,8 @@ func (s *Shell) statusLoop(baseURL string, item *systray.MenuItem) {
 					}
 				}
 				ts := map[string]string{
-					"NotConfigured": "未登录", "Starting": "连接中", "NeedsLogin": "需要登录",
-					"NeedsMachineAuth": "等待批准", "Running": "在线", "Stopped": "已停止", "Error": "错误",
+					"NotConfigured": i18n.T("未登录"), "Starting": i18n.T("连接中"), "NeedsLogin": i18n.T("需要登录"),
+					"NeedsMachineAuth": i18n.T("等待批准"), "Running": i18n.T("在线"), "Stopped": i18n.T("已停止"), "Error": i18n.T("错误"),
 				}[st.Tailscale.State]
 				if ts == "" {
 					ts = st.Tailscale.State
@@ -233,11 +284,11 @@ func (s *Shell) statusLoop(baseURL string, item *systray.MenuItem) {
 				if st.Tailscale.IP != "" {
 					ts += " " + st.Tailscale.IP
 				}
-				mode := map[string]string{"standalone": "单进程", "service": "服务"}[st.Mode]
+				mode := map[string]string{"standalone": i18n.T("单进程"), "service": i18n.T("服务")}[st.Mode]
 				if mode == "" {
 					mode = st.Mode
 				}
-				title = fmt.Sprintf("[%s] Tailscale %s · 桥接 %d/%d 已连接", mode, ts, connected, len(st.Bridges))
+				title = i18n.Sprintf("[%s] Tailscale %s · 桥接 %d/%d 已连接", mode, ts, connected, len(st.Bridges))
 			}
 			resp.Body.Close()
 		}
@@ -252,6 +303,7 @@ func (s *Shell) statusLoop(baseURL string, item *systray.MenuItem) {
 		case <-s.quitCh:
 			return
 		case <-tick.C:
+		case <-s.poke:
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"rsagent/internal/i18n"
 	"time"
 
 	"github.com/coder/websocket"
@@ -37,12 +38,12 @@ type termStatus struct {
 func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if s.deps.Bridges == nil {
-		http.Error(w, "桥接模块未初始化", http.StatusServiceUnavailable)
+		http.Error(w, i18n.T("桥接模块未初始化"), http.StatusServiceUnavailable)
 		return
 	}
 	b, ok := s.deps.Bridges.Get(id)
 	if !ok {
-		http.Error(w, "桥接不存在", http.StatusNotFound)
+		http.Error(w, i18n.T("桥接不存在"), http.StatusNotFound)
 		return
 	}
 	rw := r.URL.Query().Get("mode") == "rw"
@@ -60,8 +61,8 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	s.deps.Log.Info("网页终端已连接", "bridge", id, "rw", rw, "by", who)
-	defer s.deps.Log.Info("网页终端已断开", "bridge", id, "by", who)
+	s.deps.Log.Info(i18n.T("网页终端已连接"), "bridge", id, "rw", rw, "by", who)
+	defer s.deps.Log.Info(i18n.T("网页终端已断开"), "bridge", id, "by", who)
 
 	out, unsub := b.Subscribe()
 	defer unsub()
@@ -111,7 +112,7 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				if err := b.WriteDevice(data); err != nil {
-					s.deps.Log.Debug("终端写入串口失败", "bridge", id, "err", err)
+					s.deps.Log.Debug(i18n.T("终端写入串口失败"), "bridge", id, "err", err)
 				}
 			case websocket.MessageText:
 				var cmd termControl

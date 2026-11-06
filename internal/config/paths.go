@@ -44,6 +44,7 @@ func (p Paths) Ensure() error {
 // DefaultDataDir 返回平台默认数据目录。
 //
 //   - Windows：%ProgramData%\RemoteSerial
+//   - macOS：~/Library/Application Support/RemoteSerial（root 时为 /Library/Application Support/RemoteSerial）
 //   - Linux 且为 root：/var/lib/rsagent
 //   - 其他：$XDG_DATA_HOME/rsagent 或 ~/.local/share/rsagent
 func DefaultDataDir() string {
@@ -54,6 +55,11 @@ func DefaultDataDir() string {
 			base = `C:\ProgramData`
 		}
 		return filepath.Join(base, "RemoteSerial")
+	case "darwin":
+		if home, err := os.UserHomeDir(); err == nil && home != "" && os.Geteuid() != 0 {
+			return filepath.Join(home, "Library", "Application Support", "RemoteSerial")
+		}
+		return "/Library/Application Support/RemoteSerial"
 	default:
 		if os.Geteuid() == 0 {
 			return "/var/lib/rsagent"

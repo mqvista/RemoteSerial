@@ -7,11 +7,10 @@ package deploy
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"runtime"
 	"strings"
 	"time"
@@ -164,7 +163,7 @@ func GetStatus(o Options) Status {
 // Run 直接执行动作，要求调用方已具备所需权限。
 func Run(o Options, action string) error {
 	if !ValidAction(action) {
-		return fmt.Errorf("未知动作 %q", action)
+		return i18n.Errorf("未知动作 %q", action)
 	}
 	return runAction(o, action)
 }
@@ -173,7 +172,7 @@ func Run(o Options, action string) error {
 func Execute(o Options, action string) Result {
 	res := Result{Action: action, Time: time.Now()}
 	if !ValidAction(action) {
-		res.Message = "未知动作"
+		res.Message = i18n.T("未知动作")
 		return res
 	}
 	if NeedsElevation(o, action) && !isElevated() {
@@ -188,7 +187,7 @@ func Execute(o Options, action string) Result {
 			return r
 		}
 		res.OK = true
-		res.Message = "完成"
+		res.Message = i18n.T("完成")
 		return res
 	}
 	if err := runAction(o, action); err != nil {
@@ -196,7 +195,7 @@ func Execute(o Options, action string) Result {
 		return res
 	}
 	res.OK = true
-	res.Message = "完成"
+	res.Message = i18n.T("完成")
 	return res
 }
 
@@ -204,7 +203,7 @@ func Execute(o Options, action string) Result {
 // 发起请求的进程会被动作本身结束，所以不能同步等待。需要提权时弹 UAC。
 func ExecuteDetached(o Options, action string) error {
 	if !ValidAction(action) {
-		return fmt.Errorf("未知动作 %q", action)
+		return i18n.Errorf("未知动作 %q", action)
 	}
 	return spawnDetached(o, action, NeedsElevation(o, action) && !isElevated())
 }
@@ -227,19 +226,19 @@ func updateTargets(o Options) []string {
 func updateApply(o Options) (replaced []string, err error) {
 	p, ok := update.ReadPending(o.DataDir)
 	if !ok {
-		return nil, errors.New("没有已下载的更新，请先下载")
+		return nil, i18n.New("没有已下载的更新，请先下载")
 	}
 	for _, t := range updateTargets(o) {
 		if sum, err := update.FileSHA256(t); err == nil && strings.EqualFold(sum, p.SHA256) {
 			continue
 		}
 		if err := update.ReplaceExecutable(t, p.File); err != nil {
-			return replaced, fmt.Errorf("替换 %s: %w", t, err)
+			return replaced, i18n.Errorf("替换 %s: %w", t, err)
 		}
 		replaced = append(replaced, t)
 	}
 	if o.Log != nil {
-		o.Log.Info("已替换程序文件", "version", p.Version, "files", replaced)
+		o.Log.Info(i18n.T("已替换程序文件"), "version", p.Version, "files", replaced)
 	}
 	return replaced, nil
 }
@@ -275,7 +274,7 @@ func readResult(dataDir string) (Result, error) {
 		return r, err
 	}
 	if time.Since(r.Time) > 10*time.Minute {
-		return r, errors.New("结果已过期")
+		return r, i18n.New("结果已过期")
 	}
 	return r, nil
 }

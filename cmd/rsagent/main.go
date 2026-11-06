@@ -32,6 +32,7 @@ import (
 	"rsagent/internal/buildinfo"
 	"rsagent/internal/config"
 	"rsagent/internal/deploy"
+	"rsagent/internal/i18n"
 	"rsagent/internal/shell"
 	"rsagent/internal/update"
 )
@@ -49,8 +50,12 @@ func main() {
 	}
 
 	args := os.Args[1:]
+	// 旧版 macOS 从 Finder 启动 .app 时会带上 -psn_ 进程序列号参数
+	if len(args) > 0 && strings.HasPrefix(args[0], "-psn_") {
+		args = args[1:]
+	}
 	if len(args) == 0 {
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" || inMacAppBundle() {
 			args = []string{"ui"}
 		} else {
 			usage()
@@ -83,12 +88,12 @@ func main() {
 	case "help", "-h", "--help":
 		usage()
 	default:
-		fmt.Fprintf(os.Stderr, "未知子命令 %q\n\n", args[0])
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
 		usage()
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "错误:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
@@ -96,24 +101,27 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `rsagent %s
 
-用法:
-  rsagent ui [选项]              托盘 + 窗口；本机没有 core 时在本进程启动 core（Windows 无参数时默认）
-  rsagent run [选项]             前台运行 core，不带界面
-  rsagent service <op> [选项]    op: run | install | uninstall | start | stop | restart | status
-  rsagent deploy <action> [选项] action: %v | status
-  rsagent provision [选项]       --auth-key <key> [--tags tag:a,tag:b] [--hostname 名] [--control-url 地址]
-                                 无人值守入网；key 也可用环境变量 RSAGENT_AUTH_KEY 传入
-  rsagent update [选项]          [--check] [--url 清单地址]  检查、下载并应用更新
-  rsagent quit [选项]            让本机运行中的托盘实例退出
-  rsagent version                打印版本
+Usage:
+  rsagent ui [options]              Tray/menu bar + window; starts core in-process if none is running
+                                    (default when launched without arguments on Windows or from the .app)
+  rsagent run [options]             Run core in the foreground without UI
+  rsagent service <op> [options]    op: run | install | uninstall | start | stop | restart | status
+  rsagent deploy <action> [options] action: %v | status
+  rsagent provision [options]       --auth-key <key> [--tags tag:a,tag:b] [--hostname name] [--control-url url]
+                                    Join the tailnet unattended; the key may also come from RSAGENT_AUTH_KEY
+  rsagent update [options]          [--check] [--url manifest-url]  Check for, download and apply updates
+  rsagent quit [options]            Ask the running tray instance on this machine to quit
+  rsagent version                   Print the version
 
-选项:
-  --data-dir <目录>      数据目录，默认见配置说明；也可用环境变量 RSAGENT_DATA_DIR
-  --listen <地址>        本机管理界面监听地址，覆盖配置文件，默认 127.0.0.1:7890
-  --log-level <级别>     debug | info | warn | error，覆盖配置文件
-  --console              日志同时输出到标准错误（仅 run）
+Options:
+  --data-dir <dir>       Data directory (see config docs for the default); also RSAGENT_DATA_DIR
+  --listen <addr>        Local admin UI listen address, overrides config, default 127.0.0.1:7890
+  --log-level <level>    debug | info | warn | error, overrides config
+  --console              Also write logs to stderr (run only)
 
-环境变量 RSAGENT_AUTH_KEY / RSAGENT_TAGS：run 或 service 首次启动且未登录时自动入网。
+Environment: RSAGENT_AUTH_KEY / RSAGENT_TAGS join the tailnet automatically on the first start of
+run or service when not logged in. RSAGENT_LANG (en | zh-TW) sets the UI language when the config
+does not specify one. Command-line output is always English.
 `, buildinfo.Version, deploy.Actions)
 }
 
@@ -124,11 +132,11 @@ func newFlagSet(name string) *flag.FlagSet {
 }
 
 func addCommon(fs *flag.FlagSet, o *app.Options, withConsole bool) {
-	fs.StringVar(&o.DataDir, "data-dir", os.Getenv("RSAGENT_DATA_DIR"), "数据目录")
-	fs.StringVar(&o.Listen, "listen", "", "本机管理界面监听地址")
-	fs.StringVar(&o.LogLevel, "log-level", "", "日志级别")
+	fs.StringVar(&o.DataDir, "data-dir", os.Getenv("RSAGENT_DATA_DIR"), "data directory")
+	fs.StringVar(&o.Listen, "listen", "", "local admin UI listen address")
+	fs.StringVar(&o.LogLevel, "log-level", "", "log level")
 	if withConsole {
-		fs.BoolVar(&o.Console, "console", false, "日志同时输出到标准错误")
+		fs.BoolVar(&o.Console, "console", false, "also write logs to stderr")
 	}
 }
 
@@ -159,7 +167,7 @@ func cmdRun(args []string) error {
 	if restart.Load() {
 		// Linux 上 exec 原地替换，PID 不变；Windows 上拉起新进程后本进程退出。
 		if rerr := update.RestartSelf(); rerr != nil {
-			return fmt.Errorf("重启失败: %w", rerr)
+			return fmt.Errorf("restart failed: %w", rerr)
 		}
 	}
 	return err
@@ -194,7 +202,7 @@ func deployOptions(o app.Options) (deploy.Options, error) {
 
 func cmdService(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: rsagent service run|install|uninstall|start|stop|restart|status [选项]")
+		return fmt.Errorf("usage: rsagent service run|install|uninstall|start|stop|restart|status [options]")
 	}
 	op := args[0]
 	o, err := parseCommon("service "+op, args[1:], false)
@@ -225,13 +233,13 @@ func cmdService(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(st)
 	}
-	return fmt.Errorf("未知服务操作 %q", op)
+	return fmt.Errorf("unknown service operation %q", op)
 }
 
 // cmdDeploy 执行一个部署动作并把结果写回数据目录，供发起它的界面进程读取。
 func cmdDeploy(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: rsagent deploy <action>|status [选项]")
+		return fmt.Errorf("usage: rsagent deploy <action>|status [options]")
 	}
 	action := args[0]
 	o, err := parseCommon("deploy "+action, args[1:], false)
@@ -247,16 +255,20 @@ func cmdDeploy(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(deploy.GetStatus(dopts))
 	}
-	res := deploy.Result{Action: action, OK: true, Message: "完成", Time: time.Now()}
-	if err := deploy.Run(dopts, action); err != nil {
+	// 结果会显示在界面上，按配置的语言写；命令行输出仍是英文。
+	i18n.SetLang(i18n.Resolve(config.PeekLanguage(config.ResolvePaths(o.DataDir).ConfigFile)))
+	res := deploy.Result{Action: action, OK: true, Message: i18n.T("完成"), Time: time.Now()}
+	runErr := deploy.Run(dopts, action)
+	if runErr != nil {
 		res.OK = false
-		res.Message = err.Error()
+		res.Message = runErr.Error()
 	}
 	_ = deploy.WriteResult(dopts.DataDir, res)
-	if !res.OK {
-		return fmt.Errorf("%s: %s", action, res.Message)
+	i18n.SetLang(i18n.EN)
+	if runErr != nil {
+		return fmt.Errorf("%s: %v", action, runErr)
 	}
-	fmt.Println(action, "完成")
+	fmt.Println(action, "done")
 	return nil
 }
 
@@ -266,11 +278,11 @@ func cmdProvision(args []string) error {
 	var o app.Options
 	addCommon(fs, &o, false)
 	var (
-		authKey    = fs.String("auth-key", "", "auth key 或 OAuth client secret；也可用环境变量 RSAGENT_AUTH_KEY")
-		tags       = fs.String("tags", os.Getenv("RSAGENT_TAGS"), "入网申请的 tag，逗号分隔，如 tag:serial-agent")
-		hostname   = fs.String("hostname", "", "节点名，空则沿用配置")
-		controlURL = fs.String("control-url", "", "控制服务器地址，空为官方；Headscale 填其地址")
-		timeout    = fs.Duration("timeout", 2*time.Minute, "等待上线的时间")
+		authKey    = fs.String("auth-key", "", "auth key or OAuth client secret; may also come from RSAGENT_AUTH_KEY")
+		tags       = fs.String("tags", os.Getenv("RSAGENT_TAGS"), "tags to request when joining, comma-separated, e.g. tag:serial-agent")
+		hostname   = fs.String("hostname", "", "node name; empty keeps the configured one")
+		controlURL = fs.String("control-url", "", "control server URL; empty for the official one, or your Headscale URL")
+		timeout    = fs.Duration("timeout", 2*time.Minute, "how long to wait for the node to come online")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -302,9 +314,9 @@ func cmdProvision(args []string) error {
 	}
 	via := ""
 	if res.ViaCore {
-		via = "（由运行中的 core 完成）"
+		via = " (via the running core)"
 	}
-	fmt.Printf("已入网%s：%s  IP %s  %s\n", via, res.Hostname, res.IP, res.DNSName)
+	fmt.Printf("Joined the tailnet%s: %s  IP %s  %s\n", via, res.Hostname, res.IP, res.DNSName)
 	return nil
 }
 
@@ -314,9 +326,9 @@ func cmdUpdate(args []string) error {
 	var o app.Options
 	addCommon(fs, &o, false)
 	var (
-		checkOnly = fs.Bool("check", false, "只检查，不下载")
-		urlFlag   = fs.String("url", "", "发布清单地址，空则用配置文件中的地址")
-		force     = fs.Bool("force", false, "版本不比当前新也下载并应用")
+		checkOnly = fs.Bool("check", false, "only check, do not download")
+		urlFlag   = fs.String("url", "", "release manifest URL; empty uses the one in the config")
+		force     = fs.Bool("force", false, "download and apply even if the version is not newer")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -346,16 +358,16 @@ func cmdUpdate(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("当前版本 %s，最新版本 %s（%s）\n", buildinfo.Version, st.Latest.Version, st.Latest.PublishedAt)
+	fmt.Printf("Current version %s, latest %s (%s)\n", buildinfo.Version, st.Latest.Version, st.Latest.PublishedAt)
 	if st.Latest.Notes != "" {
 		fmt.Println(strings.TrimSpace(st.Latest.Notes))
 	}
 	if !st.Available {
-		fmt.Println("已是最新版本")
+		fmt.Println("Already up to date")
 		return nil
 	}
 	if *checkOnly {
-		fmt.Println("有新版本可用，去掉 --check 以下载并应用")
+		fmt.Println("A new version is available; run without --check to download and apply it")
 		return nil
 	}
 	if st.Downloaded == nil || st.Downloaded.Version != st.Latest.Version {
@@ -366,14 +378,14 @@ func cmdUpdate(args []string) error {
 			s := u.Status()
 			if !s.Downloading {
 				if s.Error != "" {
-					return fmt.Errorf("下载失败: %s", s.Error)
+					return fmt.Errorf("download failed: %s", s.Error)
 				}
 				break
 			}
 			if s.Total > 0 {
-				fmt.Printf("\r下载中 %d / %d KB", s.Received/1024, s.Total/1024)
+				fmt.Printf("\rDownloading %d / %d KB", s.Received/1024, s.Total/1024)
 			} else {
-				fmt.Printf("\r下载中 %d KB", s.Received/1024)
+				fmt.Printf("\rDownloading %d KB", s.Received/1024)
 			}
 			select {
 			case <-ctx.Done():
@@ -385,7 +397,7 @@ func cmdUpdate(args []string) error {
 		fmt.Println()
 	}
 	st = u.Status()
-	fmt.Printf("已下载 %s，校验通过\n", st.Downloaded.Version)
+	fmt.Printf("Downloaded %s, checksum verified\n", st.Downloaded.Version)
 
 	dopts, err := deployOptions(o)
 	if err != nil {
@@ -393,17 +405,17 @@ func cmdUpdate(args []string) error {
 	}
 	res := deploy.Execute(dopts, deploy.ActionUpdateApply)
 	if !res.OK {
-		return fmt.Errorf("应用更新失败: %s", res.Message)
+		return fmt.Errorf("applying the update failed: %s", res.Message)
 	}
 	listen := cfg.Listen
 	if o.Listen != "" {
 		listen = o.Listen
 	}
-	fmt.Printf("已更新到 %s。", st.Downloaded.Version)
+	fmt.Printf("Updated to %s. ", st.Downloaded.Version)
 	if svc := deploy.GetStatus(dopts).Service; svc.Installed && svc.Running {
-		fmt.Println("服务已重启到新版本。")
+		fmt.Println("The service has restarted on the new version.")
 	} else if localCoreResponds(listen) {
-		fmt.Println("运行中的实例仍是旧版本，请重启它（托盘退出后重新运行，或 rsagent quit 后重新启动）。")
+		fmt.Println("The running instance is still the old version; restart it (quit the tray and run again, or rsagent quit then start it).")
 	} else {
 		fmt.Println()
 	}
@@ -427,22 +439,22 @@ func cmdQuit(args []string) error {
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Post("http://"+listen+"/api/ui/quit", "application/json", nil)
 	if err != nil {
-		fmt.Println("本机没有运行中的实例")
+		fmt.Println("No running instance on this machine")
 		return nil
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("实例拒绝退出: HTTP %d（服务模式请用 rsagent service stop）", resp.StatusCode)
+		return fmt.Errorf("the instance refused to quit: HTTP %d (in service mode use rsagent service stop)", resp.StatusCode)
 	}
 	// 等端口释放
 	for i := 0; i < 50; i++ {
 		if !localCoreResponds(listen) {
-			fmt.Println("已退出")
+			fmt.Println("Quit")
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	fmt.Println("已发送退出请求")
+	fmt.Println("Quit request sent")
 	return nil
 }
 
@@ -454,4 +466,16 @@ func localCoreResponds(listen string) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+// inMacAppBundle 判断程序是否在 .app 包里运行（双击 .app 时没有参数，默认进入 ui）。
+func inMacAppBundle() bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(exe, ".app/Contents/MacOS/")
 }

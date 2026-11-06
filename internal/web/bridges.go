@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"rsagent/internal/i18n"
 	"strings"
 
 	"rsagent/internal/bridge"
@@ -13,7 +14,7 @@ import (
 func (s *Server) handleSerialPorts(w http.ResponseWriter, _ *http.Request) {
 	ports, err := bridge.ListPorts()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "枚举串口失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, i18n.Sprintf("枚举串口失败: %v", err))
 		return
 	}
 	if s.deps.Bridges != nil {
@@ -60,7 +61,7 @@ func (s *Server) handleBridgesPut(w http.ResponseWriter, r *http.Request) {
 		Bridges []config.Bridge `json:"bridges"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "请求体格式错误: "+err.Error())
+		writeError(w, http.StatusBadRequest, i18n.Sprintf("请求体格式错误: %v", err))
 		return
 	}
 	for i := range req.Bridges {
@@ -75,13 +76,13 @@ func (s *Server) handleBridgesPut(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.deps.Config.Save(s.deps.Paths.ConfigFile); err != nil {
 		s.deps.Config.Bridges = old
-		writeError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, i18n.Sprintf("保存配置失败: %v", err))
 		return
 	}
 	if s.deps.Bridges != nil {
 		s.deps.Bridges.Apply(s.deps.Config.Bridges)
 	}
-	s.deps.Log.Info("桥接配置已更新", "count", len(req.Bridges), "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("桥接配置已更新"), "count", len(req.Bridges), "by", requesterLabel(r))
 	writeJSON(w, http.StatusOK, map[string]any{"bridges": s.bridgeViews()})
 }
 
@@ -90,7 +91,7 @@ func (s *Server) handleBridgeAction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	action := r.PathValue("action")
 	if s.deps.Bridges == nil {
-		writeError(w, http.StatusServiceUnavailable, "桥接模块未初始化")
+		writeError(w, http.StatusServiceUnavailable, i18n.T("桥接模块未初始化"))
 		return
 	}
 	idx := -1
@@ -101,7 +102,7 @@ func (s *Server) handleBridgeAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if idx < 0 {
-		writeError(w, http.StatusNotFound, "桥接不存在")
+		writeError(w, http.StatusNotFound, i18n.T("桥接不存在"))
 		return
 	}
 	var err error
@@ -110,14 +111,18 @@ func (s *Server) handleBridgeAction(w http.ResponseWriter, r *http.Request) {
 		enabled := action == "start"
 		s.deps.Config.Bridges[idx].Enabled = enabled
 		if serr := s.deps.Config.Save(s.deps.Paths.ConfigFile); serr != nil {
-			s.deps.Log.Error("保存配置失败", "err", serr)
+			s.deps.Log.Error(i18n.T("保存配置失败"), "err", serr)
 		}
 		err = s.deps.Bridges.SetEnabled(id, enabled)
-		s.deps.Log.Info("桥接"+map[bool]string{true: "启动", false: "停止"}[enabled], "id", id, "by", requesterLabel(r))
+		if enabled {
+			s.deps.Log.Info(i18n.T("桥接已启动"), "id", id, "by", requesterLabel(r))
+		} else {
+			s.deps.Log.Info(i18n.T("桥接已停止"), "id", id, "by", requesterLabel(r))
+		}
 	case "kick":
 		err = s.deps.Bridges.Kick(id)
 	default:
-		writeError(w, http.StatusNotFound, "未知操作")
+		writeError(w, http.StatusNotFound, i18n.T("未知操作"))
 		return
 	}
 	resp := map[string]any{"bridges": s.bridgeViews()}

@@ -19,3 +19,6 @@
 
 # nfpm 打包临时目录
 /build/
+
+# macOS
+.DS_Store

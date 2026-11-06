@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"strings"
 	"syscall"
 	"time"
@@ -59,7 +60,7 @@ func runAction(o Options, action string) error {
 	case ActionUpdateApply:
 		return updateApplyAndRestartService(o)
 	}
-	return fmt.Errorf("未知动作 %q", action)
+	return i18n.Errorf("未知动作 %q", action)
 }
 
 // ---- 计划任务 ----
@@ -89,7 +90,7 @@ func taskStatus() TaskStatus {
 func taskInstall(o Options) error {
 	u, err := user.Current()
 	if err != nil {
-		return fmt.Errorf("获取当前用户: %w", err)
+		return i18n.Errorf("获取当前用户: %w", err)
 	}
 	runLevel := "LeastPrivilege"
 	if isElevated() {
@@ -102,7 +103,7 @@ func taskInstall(o Options) error {
 	xml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>RemoteSerial Agent：用户登录时启动，每 5 分钟检查一次，已运行则不重复启动</Description>
+    <Description>RemoteSerial Agent: starts at user logon and checks every 5 minutes; does not start a second copy if already running</Description>
     <URI>\%s</URI>
   </RegistrationInfo>
   <Triggers>
@@ -160,7 +161,7 @@ func taskInstall(o Options) error {
 	defer os.Remove(tmp)
 	out, err := runHidden("schtasks", "/Create", "/TN", taskName, "/XML", tmp, "/F")
 	if err != nil {
-		return fmt.Errorf("schtasks 创建失败: %s", strings.TrimSpace(decodeConsole(out)))
+		return i18n.Errorf("schtasks 创建失败: %s", strings.TrimSpace(decodeConsole(out)))
 	}
 	return nil
 }
@@ -171,7 +172,7 @@ func taskRemove() error {
 		if !taskStatus().Installed {
 			return nil
 		}
-		return fmt.Errorf("schtasks 删除失败: %s", strings.TrimSpace(decodeConsole(out)))
+		return i18n.Errorf("schtasks 删除失败: %s", strings.TrimSpace(decodeConsole(out)))
 	}
 	return nil
 }
@@ -183,7 +184,7 @@ func taskRemove() error {
 func queryServiceStatus(Options) (installed, running bool, err error) {
 	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
-		return false, false, fmt.Errorf("连接服务管理器: %w", err)
+		return false, false, i18n.Errorf("连接服务管理器: %w", err)
 	}
 	defer windows.CloseServiceHandle(m)
 	name, _ := windows.UTF16PtrFromString(ServiceName)
@@ -193,12 +194,12 @@ func queryServiceStatus(Options) (installed, running bool, err error) {
 		if errors.As(err, &errno) && errno == windows.ERROR_SERVICE_DOES_NOT_EXIST {
 			return false, false, nil
 		}
-		return false, false, fmt.Errorf("打开服务: %w", err)
+		return false, false, i18n.Errorf("打开服务: %w", err)
 	}
 	defer windows.CloseServiceHandle(h)
 	var st windows.SERVICE_STATUS
 	if err := windows.QueryServiceStatus(h, &st); err != nil {
-		return true, false, fmt.Errorf("查询服务状态: %w", err)
+		return true, false, i18n.Errorf("查询服务状态: %w", err)
 	}
 	running = st.CurrentState == windows.SERVICE_RUNNING || st.CurrentState == windows.SERVICE_START_PENDING
 	return true, running, nil
@@ -248,7 +249,7 @@ func firewallAdd(o Options) error {
 		"name="+firewallRule, "dir=in", "action=allow", "protocol=UDP",
 		fmt.Sprintf("localport=%d", port), "program="+o.ExePath, "enable=yes", "profile=any")
 	if err != nil {
-		return fmt.Errorf("netsh 添加规则失败: %s", strings.TrimSpace(decodeConsole(out)))
+		return i18n.Errorf("netsh 添加规则失败: %s", strings.TrimSpace(decodeConsole(out)))
 	}
 	return nil
 }
@@ -256,7 +257,7 @@ func firewallAdd(o Options) error {
 func firewallRemove() error {
 	out, err := runHidden("netsh", "advfirewall", "firewall", "delete", "rule", "name="+firewallRule)
 	if err != nil {
-		return fmt.Errorf("netsh 删除规则失败: %s", strings.TrimSpace(decodeConsole(out)))
+		return i18n.Errorf("netsh 删除规则失败: %s", strings.TrimSpace(decodeConsole(out)))
 	}
 	return nil
 }
@@ -293,11 +294,11 @@ func webview2Install() error {
 	client := &http.Client{Timeout: 3 * time.Minute}
 	resp, err := client.Get(webview2URL)
 	if err != nil {
-		return fmt.Errorf("下载 WebView2 引导程序失败: %w", err)
+		return i18n.Errorf("下载 WebView2 引导程序失败: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载 WebView2 引导程序失败: HTTP %d", resp.StatusCode)
+		return i18n.Errorf("下载 WebView2 引导程序失败: HTTP %d", resp.StatusCode)
 	}
 	tmp := filepath.Join(os.TempDir(), "MicrosoftEdgeWebview2Setup.exe")
 	f, err := os.Create(tmp)
@@ -377,23 +378,23 @@ func elevateAndWait(o Options, action string) error {
 	if r == 0 {
 		var errno syscall.Errno
 		if errors.As(callErr, &errno) && errno == 1223 {
-			return errors.New("用户取消了 UAC 提权")
+			return i18n.New("用户取消了 UAC 提权")
 		}
-		return fmt.Errorf("提权启动失败: %v", callErr)
+		return i18n.Errorf("提权启动失败: %v", callErr)
 	}
 	if info.hProcess == 0 {
-		return errors.New("提权进程句柄为空")
+		return i18n.New("提权进程句柄为空")
 	}
 	defer windows.CloseHandle(info.hProcess)
 	if _, err := windows.WaitForSingleObject(info.hProcess, uint32(5*time.Minute/time.Millisecond)); err != nil {
-		return fmt.Errorf("等待提权进程: %w", err)
+		return i18n.Errorf("等待提权进程: %w", err)
 	}
 	var code uint32
 	if err := windows.GetExitCodeProcess(info.hProcess, &code); err != nil {
 		return err
 	}
 	if code != 0 {
-		return fmt.Errorf("提权动作失败，退出码 %d", code)
+		return i18n.Errorf("提权动作失败，退出码 %d", code)
 	}
 	return nil
 }
@@ -421,9 +422,9 @@ func spawnDetached(o Options, action string, elevate bool) error {
 	if err := windows.ShellExecute(0, verb, file, parm, dir, windows.SW_HIDE); err != nil {
 		var errno syscall.Errno
 		if errors.As(err, &errno) && errno == 1223 {
-			return errors.New("用户取消了 UAC 提权")
+			return i18n.New("用户取消了 UAC 提权")
 		}
-		return fmt.Errorf("提权启动失败: %w", err)
+		return i18n.Errorf("提权启动失败: %w", err)
 	}
 	return nil
 }

@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"rsagent/internal/i18n"
 	"strings"
 	"time"
 
@@ -51,18 +51,18 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 	}
 	o.AuthKey = strings.TrimSpace(o.AuthKey)
 	if o.AuthKey == "" {
-		return ProvisionResult{}, errors.New("缺少 auth key：用 --auth-key 或环境变量 RSAGENT_AUTH_KEY 提供")
+		return ProvisionResult{}, i18n.New("缺少 auth key：用 --auth-key 或环境变量 RSAGENT_AUTH_KEY 提供")
 	}
 	o.Tags = SplitTags(strings.Join(o.Tags, ","))
 	for _, t := range o.Tags {
 		if !strings.HasPrefix(t, "tag:") {
-			return ProvisionResult{}, fmt.Errorf("tag 必须以 tag: 开头: %q", t)
+			return ProvisionResult{}, i18n.Errorf("tag 必须以 tag: 开头: %q", t)
 		}
 	}
 
 	paths := config.ResolvePaths(o.DataDir)
 	if err := paths.Ensure(); err != nil {
-		return ProvisionResult{}, fmt.Errorf("创建数据目录 %s: %w", paths.DataDir, err)
+		return ProvisionResult{}, i18n.Errorf("创建数据目录 %s: %w", paths.DataDir, err)
 	}
 	cfg, _, err := config.Load(paths.ConfigFile)
 	if err != nil {
@@ -91,7 +91,7 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 	}
 	if changed {
 		if err := cfg.Save(paths.ConfigFile); err != nil {
-			return ProvisionResult{}, fmt.Errorf("保存配置: %w", err)
+			return ProvisionResult{}, i18n.Errorf("保存配置: %w", err)
 		}
 	}
 
@@ -116,15 +116,15 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 			return ProvisionResult{Hostname: snap.Hostname, IP: snap.IP, DNSName: snap.DNSName}, nil
 		case tsnode.StateNeedsLogin, tsnode.StateError:
 			if snap.Message != "" {
-				return ProvisionResult{}, fmt.Errorf("入网失败: %s", snap.Message)
+				return ProvisionResult{}, i18n.Errorf("入网失败: %s", snap.Message)
 			}
 		case tsnode.StateNeedsMachineAuth:
 			if time.Now().After(deadline) {
-				return ProvisionResult{}, errors.New("设备等待管理员批准：auth key 没有 pre-authorized，或 tag 未在 ACL 的 tagOwners 中声明")
+				return ProvisionResult{}, i18n.New("设备等待管理员批准：auth key 没有 pre-authorized，或 tag 未在 ACL 的 tagOwners 中声明")
 			}
 		}
 		if time.Now().After(deadline) {
-			return ProvisionResult{}, fmt.Errorf("上线超时（%s），当前状态 %s %s", o.Timeout, snap.State, snap.Message)
+			return ProvisionResult{}, i18n.Errorf("上线超时（%s），当前状态 %s %s", o.Timeout, snap.State, snap.Message)
 		}
 		select {
 		case <-ctx.Done():
@@ -155,7 +155,7 @@ func provisionViaCore(ctx context.Context, listen string, o ProvisionOptions, ho
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		return ProvisionResult{}, fmt.Errorf("调用运行中的 core: %w", err)
+		return ProvisionResult{}, i18n.Errorf("调用运行中的 core: %w", err)
 	}
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	resp.Body.Close()
@@ -167,7 +167,7 @@ func provisionViaCore(ctx context.Context, listen string, o ProvisionOptions, ho
 		if e.Error == "" {
 			e.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}
-		return ProvisionResult{}, fmt.Errorf("core 拒绝登录: %s", e.Error)
+		return ProvisionResult{}, i18n.Errorf("core 拒绝登录: %s", e.Error)
 	}
 
 	deadline := time.Now().Add(o.Timeout)
@@ -182,11 +182,11 @@ func provisionViaCore(ctx context.Context, listen string, o ProvisionOptions, ho
 			return ProvisionResult{Hostname: snap.Hostname, IP: snap.IP, DNSName: snap.DNSName, ViaCore: true}, nil
 		case tsnode.StateNeedsLogin, tsnode.StateError:
 			if snap.Message != "" {
-				return ProvisionResult{}, fmt.Errorf("入网失败: %s", snap.Message)
+				return ProvisionResult{}, i18n.Errorf("入网失败: %s", snap.Message)
 			}
 		}
 		if time.Now().After(deadline) {
-			return ProvisionResult{}, fmt.Errorf("上线超时（%s），当前状态 %s %s", o.Timeout, snap.State, snap.Message)
+			return ProvisionResult{}, i18n.Errorf("上线超时（%s），当前状态 %s %s", o.Timeout, snap.State, snap.Message)
 		}
 		select {
 		case <-ctx.Done():

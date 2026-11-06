@@ -2,11 +2,11 @@
 package logging
 
 import (
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"rsagent/internal/i18n"
 	"strings"
 
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -31,7 +31,7 @@ type Logger struct {
 // Setup 初始化日志。文件名固定为 rsagent.log，单文件 10MB，保留 5 个备份、30 天。
 func Setup(o Options) (*Logger, error) {
 	if err := os.MkdirAll(o.Dir, 0o755); err != nil {
-		return nil, fmt.Errorf("创建日志目录: %w", err)
+		return nil, i18n.Errorf("创建日志目录: %w", err)
 	}
 	file := &lumberjack.Logger{
 		Filename:   filepath.Join(o.Dir, "rsagent.log"),
@@ -86,5 +86,5 @@ func ParseLevel(s string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	}
-	return slog.LevelInfo, fmt.Errorf("未知日志级别 %q", s)
+	return slog.LevelInfo, i18n.Errorf("未知日志级别 %q", s)
 }

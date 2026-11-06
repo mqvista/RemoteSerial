@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"rsagent/internal/i18n"
 	"sort"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ func (s *Server) captureDir() string { return s.deps.Paths.LogDir }
 func (s *Server) handleCaptureStart(w http.ResponseWriter, r *http.Request) {
 	b, ok := s.deps.Bridges.Get(r.PathValue("id"))
 	if !ok {
-		writeError(w, http.StatusNotFound, "桥接不存在")
+		writeError(w, http.StatusNotFound, i18n.T("桥接不存在"))
 		return
 	}
 	base, err := b.StartCapture(s.captureDir())
@@ -33,7 +34,7 @@ func (s *Server) handleCaptureStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	s.deps.Log.Info("录制已开始", "bridge", b.Status().ID, "base", base, "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("录制已开始"), "bridge", b.Status().ID, "base", base, "by", requesterLabel(r))
 	writeJSON(w, http.StatusOK, map[string]any{"base": base, "capture": b.Capture()})
 }
 
@@ -41,7 +42,7 @@ func (s *Server) handleCaptureStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCaptureStop(w http.ResponseWriter, r *http.Request) {
 	b, ok := s.deps.Bridges.Get(r.PathValue("id"))
 	if !ok {
-		writeError(w, http.StatusNotFound, "桥接不存在")
+		writeError(w, http.StatusNotFound, i18n.T("桥接不存在"))
 		return
 	}
 	if err := b.StopCapture(); err != nil {
@@ -84,12 +85,12 @@ func (s *Server) capturePath(name string) (string, bool) {
 func (s *Server) handleCaptureDownload(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.capturePath(r.PathValue("name"))
 	if !ok {
-		writeError(w, http.StatusBadRequest, "文件名非法")
+		writeError(w, http.StatusBadRequest, i18n.T("文件名非法"))
 		return
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "文件不存在")
+		writeError(w, http.StatusNotFound, i18n.T("文件不存在"))
 		return
 	}
 	defer f.Close()
@@ -103,13 +104,13 @@ func (s *Server) handleCaptureDownload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCaptureDelete(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.capturePath(r.PathValue("name"))
 	if !ok {
-		writeError(w, http.StatusBadRequest, "文件名非法")
+		writeError(w, http.StatusBadRequest, i18n.T("文件名非法"))
 		return
 	}
 	if err := os.Remove(p); err != nil {
-		writeError(w, http.StatusNotFound, "删除失败: "+err.Error())
+		writeError(w, http.StatusNotFound, i18n.Sprintf("删除失败: %v", err))
 		return
 	}
-	s.deps.Log.Info("录制文件已删除", "name", filepath.Base(p), "by", requesterLabel(r))
+	s.deps.Log.Info(i18n.T("录制文件已删除"), "name", filepath.Base(p), "by", requesterLabel(r))
 	writeJSON(w, http.StatusOK, map[string]string{"result": "deleted"})
 }
