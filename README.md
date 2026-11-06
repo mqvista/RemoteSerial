@@ -57,6 +57,7 @@ make manifest VERSION=0.4.0
 # 仅 macOS 主机（需要 Xcode 命令行工具，串口枚举与窗口依赖 CGO）
 make darwin                          # dist/rsagent-darwin-{arm64,amd64}
 make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agent.app 及 rsagent-macos.zip，ad-hoc 签名
+make dmg VERSION=0.4.0               # 另外生成拖放安装用的 dist/rsagent-macos.dmg（zip 仍用于自更新）
 ```
 
 macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。

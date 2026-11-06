@@ -7,7 +7,7 @@ LDFLAGS := -s -w \
 	-X rsagent/internal/buildinfo.Commit=$(COMMIT) \
 	-X rsagent/internal/buildinfo.Date=$(DATE)
 
-.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp deb manifest run test clean
+.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb manifest run test clean
 
 all: web windows linux-arm64
 
@@ -59,6 +59,16 @@ macapp: darwin
 	cp deploy/macos/rsagent.icns "$(APP)/Contents/Resources/rsagent.icns"
 	codesign --force --sign - "$(APP)"
 	cd dist && rm -f rsagent-macos.zip && ditto -c -k --keepParent "RemoteSerial Agent.app" rsagent-macos.zip
+
+# 拖放安装用的磁盘映像：.app 加一个指向 /Applications 的快捷方式。自更新仍使用 zip。
+DMG := dist/rsagent-macos.dmg
+dmg: macapp
+	rm -rf build/dmg "$(DMG)"
+	mkdir -p build/dmg
+	ditto "$(APP)" "build/dmg/RemoteSerial Agent.app"
+	ln -s /Applications build/dmg/Applications
+	hdiutil create -volname "RemoteSerial Agent" -srcfolder build/dmg -ov -format UDZO "$(DMG)"
+	rm -rf build/dmg
 
 run:
 	go run ./cmd/rsagent run --console
