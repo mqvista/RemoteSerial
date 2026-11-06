@@ -46,7 +46,7 @@ async function load() {
     cfg.value = await api.settings()
     form.value = {
       logLevel: cfg.value.logLevel,
-      allowedLogins: [...cfg.value.access.allowedLogins],
+      allowedLogins: [...(cfg.value.access.allowedLogins ?? [])],
       listen: cfg.value.listen,
       webPort: cfg.value.tailscale.webPort,
       udpPort: cfg.value.tailscale.udpPort,

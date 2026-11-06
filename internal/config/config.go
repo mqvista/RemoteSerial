@@ -78,6 +78,22 @@ type PortMatch struct {
 	Serial string `json:"serial"`
 }
 
+// normalize 把为 nil 的列表换成空列表：配置文件里写成 null 时，界面拿到的也是 []。
+func (c *Config) normalize() {
+	if c.Access.AllowedLogins == nil {
+		c.Access.AllowedLogins = []string{}
+	}
+	if c.Tailscale.AdvertiseRoutes == nil {
+		c.Tailscale.AdvertiseRoutes = []string{}
+	}
+	if c.Tailscale.Tags == nil {
+		c.Tailscale.Tags = []string{}
+	}
+	if c.Bridges == nil {
+		c.Bridges = []Bridge{}
+	}
+}
+
 // PeekLanguage 只读取配置里的语言设置，文件不存在或无法解析时返回空串，不会创建文件。
 func PeekLanguage(path string) string {
 	data, err := os.ReadFile(path)
@@ -137,6 +153,7 @@ func Load(path string) (cfg *Config, created bool, err error) {
 		return nil, false, i18n.Errorf("配置版本 %d 高于程序支持的 %d", cfg.Version, CurrentVersion)
 	}
 	cfg.Version = CurrentVersion
+	cfg.normalize()
 	if cfg.Update.URL == "" {
 		cfg.Update.URL = DefaultUpdateURL
 	}
@@ -148,6 +165,7 @@ func Load(path string) (cfg *Config, created bool, err error) {
 
 // Save 原子写入配置文件。
 func (c *Config) Save(path string) error {
+	c.normalize()
 	if err := c.Validate(); err != nil {
 		return err
 	}

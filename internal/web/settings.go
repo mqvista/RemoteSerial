@@ -40,7 +40,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := s.deps.Config
 	backup := *cfg
-	backup.Access.AllowedLogins = append([]string(nil), cfg.Access.AllowedLogins...)
+	backup.Access.AllowedLogins = append([]string{}, cfg.Access.AllowedLogins...) // 保持非 nil，回滚后不会存成 null
 	resp := settingsResponse{Applied: []string{}, Pending: []string{}}
 
 	if u.LogLevel != nil {
