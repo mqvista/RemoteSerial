@@ -266,6 +266,7 @@ export interface DeployStatus {
   firewall: { supported: boolean; installed: boolean; udpPort: number }
   webview2: { supported: boolean; installed: boolean; version?: string }
   autoLogon: { supported: boolean; enabled: boolean; user?: string }
+  loginItem?: { supported: boolean; enabled: boolean; bundle?: string; detail?: string }
 }
 
 export interface DeployResult {
@@ -286,6 +287,8 @@ export type DeployAction =
   | 'firewall-add'
   | 'firewall-remove'
   | 'webview2-install'
+  | 'login-enable'
+  | 'login-disable'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { cache: 'no-store', ...init })
@@ -347,6 +350,39 @@ export const api = {
   saveBridges: (bridges: BridgeConfig[]) => request<{ bridges: BridgeView[] }>('/api/bridges', json('PUT', { bridges })),
   bridgeAction: (id: string, action: 'start' | 'stop' | 'kick') =>
     request<{ bridges: BridgeView[]; warning?: string }>(`/api/bridges/${encodeURIComponent(id)}/${action}`, { method: 'POST' }),
+}
+
+// ---- macOS 本机窗口桥接 ----
+// 服务模式下 core 是后台守护进程，弹不出管理员授权框；在 RemoteSerial Agent 窗口里时，
+// 需要授权的部署动作交给窗口所在的菜单栏程序执行。
+
+type NativeBridge = { postMessage: (m: unknown) => void }
+const nativeWaiting = new Map<number, (r: DeployResult) => void>()
+let nativeSeq = 0
+
+function nativeBridge(): NativeBridge | undefined {
+  return (window as unknown as { webkit?: { messageHandlers?: { rsagent?: NativeBridge } } }).webkit?.messageHandlers?.rsagent
+}
+
+;(window as unknown as { __rsagentNativeDone: (id: number, r: DeployResult) => void }).__rsagentNativeDone = (id, r) => {
+  nativeWaiting.get(id)?.(r)
+  nativeWaiting.delete(id)
+}
+
+/** 当前页面是否在 macOS 的 RemoteSerial Agent 窗口里。 */
+export function hasNativeDeploy(): boolean {
+  return !!nativeBridge()
+}
+
+/** 经由本机窗口执行部署动作，会弹出系统的管理员授权框。 */
+export function nativeDeploy(action: DeployAction): Promise<DeployResult> {
+  const bridge = nativeBridge()
+  if (!bridge) return Promise.reject(new Error('native bridge unavailable'))
+  const id = ++nativeSeq
+  return new Promise((resolve) => {
+    nativeWaiting.set(id, resolve)
+    bridge.postMessage({ id, action })
+  })
 }
 
 export function formatUptime(sec: number): string {

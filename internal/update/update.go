@@ -385,7 +385,7 @@ func (u *Updater) download(ctx context.Context, l Latest) (Pending, error) {
 		os.Remove(tmp)
 		return Pending{}, i18n.Errorf("大小不符：清单 %d，实际 %d", l.Size, n)
 	}
-	dst := filepath.Join(u.dir, "rsagent-"+sanitize(l.Version)+exeSuffix())
+	dst := filepath.Join(u.dir, "rsagent-"+sanitize(l.Version)+downloadSuffix)
 	_ = os.Remove(dst)
 	if err := os.Rename(tmp, dst); err != nil {
 		os.Remove(tmp)
@@ -414,6 +414,7 @@ func (u *Updater) ClearPending() {
 	u.mu.Unlock()
 	if p != nil {
 		_ = os.Remove(p.File)
+		_ = os.Remove(binCachePath(filepath.Dir(u.dir), p.Version))
 	}
 	_ = os.Remove(pendingPath(filepath.Dir(u.dir)))
 	u.emit()
@@ -475,6 +476,7 @@ func ReadPending(dataDir string) (Pending, bool) {
 func RemovePending(dataDir string) {
 	if p, ok := ReadPending(dataDir); ok {
 		_ = os.Remove(p.File)
+		_ = os.Remove(binCachePath(dataDir, p.Version))
 	}
 	_ = os.Remove(pendingPath(dataDir))
 }
@@ -539,9 +541,36 @@ func ReplaceExecutable(target, src string) error {
 	return nil
 }
 
-// CleanupOld 删除替换时留下的 .old 文件，启动时调用；仍被占用则忽略。
+// CleanupOld 删除替换时留下的 .old 文件（macOS 上还有旧的 .app），启动时调用；仍被占用则忽略。
 func CleanupOld(exe string) {
 	_ = os.Remove(exe + ".old")
+	cleanupOldBundle(exe)
+}
+
+// binCachePath 是 macOS 上从 .app 包里取出的主程序的缓存位置。
+func binCachePath(dataDir, version string) string {
+	return filepath.Join(Dir(dataDir), "rsagent-"+sanitize(version)+"-bin")
+}
+
+// PendingBinary 返回已下载的更新里可直接替换可执行文件的程序及其 SHA-256。
+// Windows/Linux 下载的就是程序本身；macOS 下载的是 .app 的 zip，取出其中的主程序。
+func PendingBinary(dataDir string) (p Pending, bin, sum string, ok bool) {
+	p, ok = ReadPending(dataDir)
+	if !ok {
+		return p, "", "", false
+	}
+	bin, err := pendingBinary(dataDir, p)
+	if err != nil {
+		return p, "", "", false
+	}
+	if bin == p.File {
+		return p, bin, p.SHA256, true
+	}
+	sum, err = FileSHA256(bin)
+	if err != nil {
+		return p, "", "", false
+	}
+	return p, bin, sum, true
 }
 
 func copyFile(src, dst string) error {

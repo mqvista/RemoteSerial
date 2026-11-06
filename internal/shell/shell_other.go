@@ -11,9 +11,10 @@ import (
 
 // Options 是壳层参数。非 Windows 平台没有桌面壳。
 type Options struct {
-	Listen  string
-	DataDir string
-	Log     *slog.Logger
+	Listen     string
+	DataDir    string
+	Log        *slog.Logger
+	Background bool // 启动时不弹出窗口
 }
 
 // Shell 在非 Windows 平台是空实现。

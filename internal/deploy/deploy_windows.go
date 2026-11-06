@@ -19,6 +19,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/kardianos/service"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -45,6 +46,8 @@ func fillStatus(st *Status, o Options) {
 
 func runAction(o Options, action string) error {
 	switch action {
+	case ActionLoginEnable, ActionLoginDisable:
+		return i18n.Errorf("动作 %q 仅支持 macOS", action)
 	case ActionTaskInstall:
 		return taskInstall(o)
 	case ActionTaskRemove:
@@ -482,3 +485,11 @@ func xmlEscape(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	return r.Replace(s)
 }
+
+func platformServiceConfig(Options, *service.Config) {}
+
+func svcStart(_ Options, svc service.Service) error { return svc.Start() }
+
+func svcStop(_ Options, svc service.Service) error { return svc.Stop() }
+
+func fixOwner(string, ...string) {}

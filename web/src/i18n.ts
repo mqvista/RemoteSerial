@@ -284,8 +284,16 @@ const en = {
   'tsp.pingFailed': 'failed',
 
   // 部署
+  'deploy.startup': 'Startup',
+  'deploy.startupHint': 'Choose who runs core. Starting at login opens the app after you log in and runs core inside it; the system service runs core at boot without anyone logging in. With the service, the menu bar icon still appears after login; it simply connects to the service and does not start a second core.',
+  'deploy.startupNone': 'Do not start automatically',
+  'deploy.startupLogin': 'Start at login',
+  'deploy.startupLoginHint': 'Opens RemoteSerial Agent in the menu bar after you log in; core stops when you quit it',
+  'deploy.startupService': 'Start at boot (system service)',
+  'deploy.startupServiceHint': 'Runs as your account at boot, no login needed, restarts if it crashes; the menu bar icon appears after login',
+  'deploy.startupSaved': 'Startup setting saved',
   'deploy.macos':
-    'Running on macOS. The menu bar icon and window come from RemoteSerial Agent.app; to start it at login, add the app under System Settings → General → Login Items. To run core at boot without anyone logging in, install the system service below (launchd). That needs root, so run the rsagent binary inside the .app with sudo in Terminal: sudo "/Applications/RemoteSerial Agent.app/Contents/MacOS/rsagent" deploy service-install. Scheduled tasks, firewall rules and WebView2 are Windows-only.',
+    'Running on macOS. The menu bar icon and window come from RemoteSerial Agent.app; choose how it starts under \"Startup\" below. To run core at boot without anyone logging in, install the system service below: it runs as the owner of the data directory (your account), and installing or controlling it shows the system administrator prompt on this Mac. While core runs as a service, do this from the RemoteSerial Agent window on this Mac. Updates replace the whole .app. Scheduled tasks, firewall rules and WebView2 are Windows-only.',
   'deploy.unix': 'Running on {os}. There is no desktop tray here; use "System service" below to register core as a systemd service. Scheduled tasks, firewall rules and WebView2 are Windows-only.',
   'deploy.notElevated':
     'This process is not elevated. Actions marked "Requires admin" show a UAC prompt on the remote screen. If nobody is on site, first install the startup task with "highest privileges" there; the program will then run elevated.',
@@ -653,8 +661,16 @@ const zhTWMessages: Messages = {
   'tsp.took': '耗時 {n} ms',
   'tsp.pingFailed': '失敗',
 
+  'deploy.startup': '啟動方式',
+  'deploy.startupHint': '選擇由誰執行 core。登入後啟動會在你登入後開啟 App，core 在 App 內執行；系統服務則在開機時執行 core，不需要任何人登入。選擇系統服務時，登入後仍會顯示選單列圖示，它只會連到服務，不會再啟動第二個 core。',
+  'deploy.startupNone': '不自動啟動',
+  'deploy.startupLogin': '登入後啟動',
+  'deploy.startupLoginHint': '登入後在選單列開啟 RemoteSerial Agent；結束 App 時 core 也會停止',
+  'deploy.startupService': '開機啟動（系統服務）',
+  'deploy.startupServiceHint': '開機即以你的帳號執行，不需要登入，當機時自動重新啟動；登入後顯示選單列圖示',
+  'deploy.startupSaved': '啟動方式已儲存',
   'deploy.macos':
-    '目前為 macOS。選單列圖示與視窗由 RemoteSerial Agent.app 提供；如需登入後自動啟動，請在「系統設定 → 一般 → 登入項目」加入此 App。若要不依賴使用者登入、開機即執行 core，可安裝下方的系統服務（launchd）。這需要 root 權限，請在終端機以 sudo 執行 .app 內的 rsagent：sudo "/Applications/RemoteSerial Agent.app/Contents/MacOS/rsagent" deploy service-install。排程工作、防火牆規則與 WebView2 僅適用於 Windows。',
+    '目前為 macOS。選單列圖示與視窗由 RemoteSerial Agent.app 提供；啟動方式可在下方「啟動方式」中選擇。若要不依賴使用者登入、開機即執行 core，可安裝下方的系統服務：服務以資料目錄的擁有者（你的帳號）身分執行，安裝與控制時會在這台 Mac 上跳出系統的管理員授權視窗；core 以服務執行時，請在這台 Mac 的 RemoteSerial Agent 視窗中操作。更新時會替換整個 .app。排程工作、防火牆規則與 WebView2 僅適用於 Windows。',
   'deploy.unix': '目前為 {os}，沒有桌面系統匣；請用下方「系統服務」把 core 註冊為 systemd 服務。排程工作、防火牆規則與 WebView2 僅適用於 Windows。',
   'deploy.notElevated':
     '目前處理程序未提升權限。標有「需管理員」的動作會跳出 UAC 確認框，確認框出現在遠端的螢幕上。遠端無人時，請先在現場安裝帶「最高權限」的開機自動啟動工作，之後程式本身就是以提升的權限執行。',

@@ -174,10 +174,21 @@ func cmdRun(args []string) error {
 }
 
 func cmdUI(args []string) error {
-	o, err := parseCommon("ui", args, false)
+	// --background：只显示托盘/菜单栏图标，不弹出窗口（登录后启动时使用）
+	background := false
+	rest := args[:0:0]
+	for _, a := range args {
+		if a == "--background" {
+			background = true
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	o, err := parseCommon("ui", rest, false)
 	if err != nil {
 		return err
 	}
+	o.Background = background
 	ctx, stop := signalContext()
 	defer stop()
 	return app.RunUI(ctx, o)
@@ -216,7 +227,24 @@ func cmdService(args []string) error {
 	switch op {
 	case "run":
 		o.Mode = "service"
-		return deploy.RunAsService(dopts, func(ctx context.Context) error { return app.Run(ctx, o) })
+		return deploy.RunAsService(dopts, func(ctx context.Context) error {
+			if runtime.GOOS != "darwin" {
+				return app.Run(ctx, o)
+			}
+			// macOS 的服务以用户身份运行，没有权限让 launchd 重启自己；更新后在本进程内
+			// 停掉 core，再 exec 新程序，PID 不变，launchd 不会察觉。
+			cctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			var restart atomic.Bool
+			o.Restart = func() { restart.Store(true); cancel() }
+			err := app.Run(cctx, o)
+			if restart.Load() && ctx.Err() == nil {
+				if rerr := update.RestartSelf(); rerr != nil {
+					return fmt.Errorf("restart failed: %w", rerr)
+				}
+			}
+			return err
+		})
 	case "install":
 		return deploy.Run(dopts, deploy.ActionServiceInstall)
 	case "uninstall", "remove":

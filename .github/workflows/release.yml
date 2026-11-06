@@ -84,8 +84,9 @@ jobs:
           path: dist/rsagent-setup-*.exe
           if-no-files-found: error
 
-  # macOS 版依赖 CGO（串口枚举、WebKit 窗口），只能在 macOS 上编译；产物为通用二进制的 .app 压缩包。
-  # 不单独发布 rsagent-darwin-* 裸程序：清单里出现它们会让 .app 内的程序被自更新替换，破坏包签名。
+  # macOS 版依赖 CGO（串口枚举、WebKit 窗口），只能在 macOS 上编译；产物为通用二进制的 .app 压缩包，
+  # 清单里作为 darwin-* 的更新文件，自更新时替换整个 .app。不单独发布 rsagent-darwin-* 裸程序，
+  # 否则清单会指向裸程序，自更新只换包内程序会破坏包签名。
   macos:
     needs: build
     runs-on: macos-latest

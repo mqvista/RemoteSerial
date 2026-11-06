@@ -1,10 +1,12 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package deploy
 
 import (
 	"os"
 	"os/exec"
+
+	"github.com/kardianos/service"
 	"rsagent/internal/i18n"
 )
 
@@ -21,6 +23,8 @@ func fillStatus(st *Status, o Options) {
 
 func runAction(o Options, action string) error {
 	switch action {
+	case ActionLoginEnable, ActionLoginDisable:
+		return i18n.Errorf("动作 %q 仅支持 macOS", action)
 	case ActionServiceInstall, ActionServiceRemove, ActionServiceStart, ActionServiceStop, ActionServiceRestart:
 		return serviceAction(o, action)
 	case ActionUpdateApply:
@@ -60,3 +64,9 @@ func updateServiceBinPath(o Options) error {
 	_ = svc.Uninstall()
 	return svc.Install()
 }
+
+func platformServiceConfig(Options, *service.Config) {}
+
+func svcStart(_ Options, svc service.Service) error { return svc.Start() }
+
+func svcStop(_ Options, svc service.Service) error { return svc.Stop() }

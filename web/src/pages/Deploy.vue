@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NPopconfirm, NProgress, NSpace, NTag, NText, useMessage } from 'naive-ui'
-import { api, formatBytes } from '../api'
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NPopconfirm, NProgress, NRadio, NRadioGroup, NSpace, NTag, NText, useMessage } from 'naive-ui'
+import { api, formatBytes, hasNativeDeploy, nativeDeploy } from '../api'
 import type { DeployAction, DeployStatus, UpdateStatus } from '../api'
 import { useStatus } from '../status'
 import { formatTime, t, tOr } from '../i18n'
@@ -115,7 +115,9 @@ async function run(action: DeployAction) {
   busy.value = action
   lastMessage.value = ''
   try {
-    const r = await api.deployAction(action)
+    // macOS 服务模式：core 弹不出授权框，在本机窗口里时交给菜单栏程序执行
+    const viaNative = st.value?.os === 'darwin' && st.value?.mode === 'service' && action.startsWith('service-') && hasNativeDeploy()
+    const r = viaNative ? { result: await nativeDeploy(action), status: st.value! } : await api.deployAction(action)
     lastMessage.value = r.result.message
     if (r.result.ok) message.success(r.result.message || t('common.done'))
     else message.error(r.result.message || t('common.failed'))
@@ -138,6 +140,50 @@ async function run(action: DeployAction) {
   }
   load(true)
 }
+
+// ---- macOS 启动方式 ----
+// 登录后启动（用户级 LaunchAgent 打开 .app）与系统服务可以并存：服务负责 core，
+// 登录后启动只提供菜单栏界面。界面上按“core 由谁运行”三选一；选系统服务时总是同时
+// 打开登录后启动，登录后就有菜单栏图标。
+type StartupMode = 'none' | 'login' | 'service'
+const startupMode = computed<StartupMode>(() => (st.value?.service.installed ? 'service' : st.value?.loginItem?.enabled ? 'login' : 'none'))
+const loginSupported = computed(() => !!st.value?.loginItem?.supported)
+
+async function runQuiet(action: DeployAction): Promise<boolean> {
+  try {
+    const r = await api.deployAction(action)
+    if (!r.result.ok) {
+      message.error(r.result.message || t('common.failed'))
+      return false
+    }
+    st.value = { ...r.status, mode: st.value?.mode ?? '', hasShell: st.value?.hasShell ?? false }
+    return true
+  } catch (e) {
+    message.error(String(e))
+    return false
+  }
+}
+
+async function setStartupMode(m: StartupMode) {
+  const cur = startupMode.value
+  if (m === cur || busy.value) return
+  if (m === 'service') {
+    // 服务模式下登录后也显示菜单栏图标（它只连到服务，不会再起 core）
+    if (loginSupported.value && !st.value?.loginItem?.enabled && !(await runQuiet('login-enable'))) return
+    await run('service-install')
+    return
+  }
+  // 先改登录项（此时 core 还在），再卸载服务
+  // 找不到 .app 时登录项不可用，不要因此卡住卸载服务
+  const skipLogin = m === 'login' && !loginSupported.value
+  if (!skipLogin && !(await runQuiet(m === 'login' ? 'login-enable' : 'login-disable'))) return
+  if (cur === 'service') await run('service-remove')
+  else {
+    message.success(t('deploy.startupSaved'))
+    load(true)
+  }
+}
+
 
 function tag(ok: boolean, yes = t('common.installed'), no = t('common.notInstalled')) {
   return { type: ok ? ('success' as const) : ('default' as const), label: ok ? yes : no }
@@ -243,6 +289,27 @@ watch(connected, (c, old) => {
       </NSpace>
     </NCard>
 
+    <NCard v-if="st?.os === 'darwin'" :title="t('deploy.startup')">
+      <NText depth="3" style="display: block; margin-bottom: 12px">{{ t('deploy.startupHint') }}</NText>
+      <NRadioGroup :value="startupMode" :disabled="!!busy || switching" @update:value="setStartupMode">
+        <NSpace vertical :size="10">
+          <NRadio value="none">{{ t('deploy.startupNone') }}</NRadio>
+          <NRadio value="login" :disabled="!loginSupported">
+            {{ t('deploy.startupLogin') }}
+            <NText depth="3" style="font-size: 12px; margin-left: 6px">{{ t('deploy.startupLoginHint') }}</NText>
+          </NRadio>
+          <NRadio value="service">
+            {{ t('deploy.startupService') }}
+            <NText depth="3" style="font-size: 12px; margin-left: 6px">{{ t('deploy.startupServiceHint') }}</NText>
+            <NText type="warning" style="font-size: 12px; margin-left: 6px">{{ t('common.needsAdmin') }}</NText>
+          </NRadio>
+        </NSpace>
+      </NRadioGroup>
+      <NText v-if="st?.loginItem && !st.loginItem.supported && st.loginItem.detail" type="warning" style="display: block; margin-top: 8px; font-size: 12px">
+        {{ st.loginItem.detail }}
+      </NText>
+    </NCard>
+
     <NCard v-if="st?.service.supported" :title="t('deploy.service')">
       <template #header-extra>
         <NSpace>
@@ -256,7 +323,7 @@ watch(connected, (c, old) => {
       </NText>
       <NText v-if="st!.service.binary" depth="3" style="display: block; margin-bottom: 12px; font-size: 12px">{{ t('deploy.serviceBinary', { p: st!.service.binary }) }}</NText>
       <NSpace>
-        <NPopconfirm v-if="!st!.service.installed" @positive-click="run('service-install')">
+        <NPopconfirm v-if="!st!.service.installed" @positive-click="st!.os === 'darwin' ? setStartupMode('service') : run('service-install')">
           <template #trigger>
             <NButton type="primary" :loading="busy === 'service-install'">{{ t('deploy.installStart') }}</NButton>
           </template>
@@ -265,7 +332,7 @@ watch(connected, (c, old) => {
         <template v-else>
           <NButton v-if="!st!.service.running" type="primary" :loading="busy === 'service-start'" @click="run('service-start')">{{ t('common.start') }}</NButton>
           <NButton v-else :loading="busy === 'service-stop'" @click="run('service-stop')">{{ t('common.stop') }}</NButton>
-          <NPopconfirm @positive-click="run('service-remove')">
+          <NPopconfirm @positive-click="st!.os === 'darwin' ? setStartupMode('login') : run('service-remove')">
             <template #trigger>
               <NButton type="error" ghost :loading="busy === 'service-remove'">{{ t('common.uninstall') }}</NButton>
             </template>

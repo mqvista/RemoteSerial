@@ -61,6 +61,8 @@ make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agen
 
 macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。
 
+macOS 的系统服务注册为 launchd 守护进程（`/Library/LaunchDaemons/RemoteSerialAgent.plist`），开机即运行但以数据目录属主（安装者本人）身份执行，日志写到数据目录的 `logs/`。安装、启停、卸载需要管理员权限，部署页会弹出系统的管理员授权框；core 以服务运行时，这些操作需在本机的 RemoteSerial Agent 窗口中进行（服务进程本身弹不出授权框）。自更新下载 `rsagent-macos.zip` 并替换整个 `.app`，服务使用的程序副本一并替换后原地重启。
+
 界面语言支持 English 与正體中文，在网页右上角切换，保存在配置的 `language`（`en` / `zh-TW`，留空跟随系统）。网页、托盘/菜单栏、后端返回的提示与日志都跟随这一设置；命令行输出始终为英文。后端文字的译文在 `internal/i18n/catalog.go`，`go test ./internal/i18n` 会检查是否有遗漏。
 
 发布：打 tag `v0.4.0` 推送后，`.github/workflows/release.yml` 自动构建全部平台、deb、安装包、`manifest.json` 与 `SHA256SUMS` 并创建 GitHub Release。程序内自更新默认读取该 Release 的 `manifest.json`。

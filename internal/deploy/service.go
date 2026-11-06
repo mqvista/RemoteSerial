@@ -39,7 +39,7 @@ func serviceArgs(o Options) []string {
 
 // ServiceConfig 返回 kardianos/service 的配置。
 func ServiceConfig(o Options) *service.Config {
-	return &service.Config{
+	c := &service.Config{
 		Name:        ServiceName,
 		DisplayName: "RemoteSerial Agent",
 		Description: "Remote serial bridge agent: embeds a Tailscale node and exposes local serial ports as TCP services in the tailnet.",
@@ -53,6 +53,8 @@ func ServiceConfig(o Options) *service.Config {
 			"RestartSec":             5,
 		},
 	}
+	platformServiceConfig(o, c)
+	return c
 }
 
 // Program 是 kardianos/service 的回调实现，Run 函数由调用方注入（避免 deploy 依赖 app）。
@@ -132,23 +134,23 @@ func serviceAction(o Options, action string) error {
 	case ActionServiceInstall:
 		return serviceInstall(o, svc)
 	case ActionServiceRemove:
-		_ = svc.Stop()
+		_ = svcStop(o, svc)
 		if err := svc.Uninstall(); err != nil && !errors.Is(err, service.ErrNotInstalled) {
 			return i18n.Errorf("卸载服务: %w", err)
 		}
 		return nil
 	case ActionServiceStart:
-		if err := svc.Start(); err != nil {
+		if err := svcStart(o, svc); err != nil {
 			return i18n.Errorf("启动服务: %w", err)
 		}
 		return nil
 	case ActionServiceStop:
-		if err := svc.Stop(); err != nil {
+		if err := svcStop(o, svc); err != nil {
 			return i18n.Errorf("停止服务: %w", err)
 		}
 		return nil
 	case ActionServiceRestart:
-		_ = svc.Stop()
+		_ = svcStop(o, svc)
 		// 等服务管理器把旧进程收干净，否则立刻 Start 可能报“服务正在停止”。
 		for i := 0; i < 20; i++ {
 			if _, running, _ := queryServiceStatus(o); !running {
@@ -156,7 +158,7 @@ func serviceAction(o Options, action string) error {
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
-		if err := svc.Start(); err != nil {
+		if err := svcStart(o, svc); err != nil {
 			return i18n.Errorf("重启服务: %w", err)
 		}
 		return nil
@@ -167,11 +169,12 @@ func serviceAction(o Options, action string) error {
 func serviceInstall(o Options, svc service.Service) error {
 	installed := serviceStatus(o).Installed
 	if installed {
-		_ = svc.Stop()
+		_ = svcStop(o, svc)
 	}
 	if err := copyBinary(o.ExePath, ServiceBinary(o)); err != nil {
 		return i18n.Errorf("复制程序到 %s: %w", ServiceBinary(o), err)
 	}
+	fixOwner(o.DataDir, filepath.Dir(ServiceBinary(o)))
 	if installed {
 		if err := updateServiceBinPath(o); err != nil {
 			return i18n.Errorf("更新服务路径: %w", err)
@@ -181,7 +184,7 @@ func serviceInstall(o Options, svc service.Service) error {
 			return i18n.Errorf("安装服务: %w", err)
 		}
 	}
-	if err := svc.Start(); err != nil {
+	if err := svcStart(o, svc); err != nil {
 		return i18n.Errorf("服务已安装但启动失败: %w。可查看数据目录 logs\\rsagent.log", err)
 	}
 	return nil

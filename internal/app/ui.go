@@ -41,7 +41,12 @@ func RunUI(ctx context.Context, o Options) error {
 	if o.Listen != "" {
 		listen = o.Listen
 	}
-	if probeCore(listen) == coreWithShell {
+	if o.Background {
+		// 登录后启动：已有带壳的实例就什么也不做，不去唤起它的窗口
+		if coreResponds(listen) && hasShell(listen) {
+			return nil
+		}
+	} else if probeCore(listen) == coreWithShell {
 		return nil
 	}
 	update.CleanupApplied(paths.DataDir, buildinfo.Version)
@@ -49,7 +54,7 @@ func RunUI(ctx context.Context, o Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sh := shell.New(shell.Options{Listen: listen, DataDir: paths.DataDir})
+	sh := shell.New(shell.Options{Listen: listen, DataDir: paths.DataDir, Background: o.Background})
 	sup := &supervisor{opts: o, listen: listen, dataDir: paths.DataDir, show: sh.Open, quit: sh.Quit}
 	go sup.loop(ctx)
 
@@ -101,12 +106,12 @@ func (s *supervisor) followCoreVersion() {
 		return
 	}
 	s.selfUpdateTried[v] = true
-	p, ok := update.ReadPending(s.dataDir)
+	p, _, binSum, ok := update.PendingBinary(s.dataDir)
 	if !ok || p.Version != v {
 		return
 	}
 	exe := currentExe()
-	if sum, err := update.FileSHA256(exe); err == nil && strings.EqualFold(sum, p.SHA256) {
+	if sum, err := update.FileSHA256(exe); err == nil && strings.EqualFold(sum, binSum) {
 		// 文件已是新版本，只是还没重启
 		s.restart()
 		return
@@ -233,6 +238,20 @@ const (
 	coreHeadless                   // 有 core 但没有壳（服务模式或 run 子命令）
 	coreWithShell                  // 有带壳的实例，且已唤起其窗口
 )
+
+// hasShell 判断本机 core 是否已有带壳的实例（单进程模式下壳与 core 在同一进程）。
+func hasShell(listen string) bool {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://" + listen + "/api/deploy/status")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var st struct {
+		HasShell bool `json:"hasShell"`
+	}
+	return json.NewDecoder(resp.Body).Decode(&st) == nil && st.HasShell
+}
 
 // probeCore 用 POST /api/ui/show 探测：200 表示已有壳并已唤起窗口，404 表示只有 core。
 func probeCore(listen string) coreState {

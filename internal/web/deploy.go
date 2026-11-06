@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
+	"runtime"
 	"time"
 
 	"rsagent/internal/deploy"
@@ -52,6 +53,13 @@ func (s *Server) handleDeployAction(w http.ResponseWriter, r *http.Request) {
 	by := requesterLabel(r)
 	if action == deploy.ActionUpdateApply {
 		writeError(w, http.StatusBadRequest, i18n.T("请使用更新接口 /api/update/apply"))
+		return
+	}
+
+	// macOS 的服务是后台守护进程，弹不出管理员授权框；需要提权的动作由本机窗口
+	// （菜单栏程序，在用户的图形会话里）直接执行，见 shell_darwin.go。
+	if s.deps.Mode == "service" && runtime.GOOS == "darwin" && deploy.NeedsElevation(opts, action) {
+		writeError(w, http.StatusConflict, i18n.T("服务模式下此动作需要管理员授权，请在这台 Mac 的 RemoteSerial Agent 窗口中操作"))
 		return
 	}
 

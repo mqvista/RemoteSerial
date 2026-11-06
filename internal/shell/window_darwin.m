@@ -6,14 +6,16 @@
 #include "window_darwin.h"
 
 extern void goShellQuit(void);
+extern void goShellDeploy(int id, char *action);
 
-@interface RSWindowController : NSObject <NSWindowDelegate, WKNavigationDelegate, WKUIDelegate>
+@interface RSWindowController : NSObject <NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler>
 @property(strong) NSWindow *window;
 @property(strong) WKWebView *webView;
 @property(strong) NSURL *baseURL;
 @property(copy) NSString *title;
 @property(copy) NSString *okLabel;
 @property(copy) NSString *cancelLabel;
+@property(strong) NSURL *reopenURL;
 @end
 
 static RSWindowController *controller;
@@ -46,7 +48,10 @@ static RSWindowController *sharedController(void) {
     }
     [w setFrameAutosaveName:@"rsagent.main"];
 
-    WKWebView *wv = [[WKWebView alloc] initWithFrame:rect configuration:[WKWebViewConfiguration new]];
+    WKWebViewConfiguration *cfg = [WKWebViewConfiguration new];
+    // 页面通过 window.webkit.messageHandlers.rsagent 请求需要管理员授权的部署动作
+    [cfg.userContentController addScriptMessageHandler:self name:@"rsagent"];
+    WKWebView *wv = [[WKWebView alloc] initWithFrame:rect configuration:cfg];
     wv.navigationDelegate = self;
     wv.UIDelegate = self;
     w.contentView = wv;
@@ -57,6 +62,29 @@ static RSWindowController *sharedController(void) {
   [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
   [self.window makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
+}
+
+// 只接受本机管理页面发来的 {id, action}，交给 Go 侧执行（会弹系统授权框）。
+- (void)userContentController:(WKUserContentController *)ucc didReceiveScriptMessage:(WKScriptMessage *)message {
+  NSURL *src = message.frameInfo.request.URL;
+  if (src == nil || ![self isLocal:src] || ![message.body isKindOfClass:[NSDictionary class]]) {
+    return;
+  }
+  NSDictionary *body = message.body;
+  NSNumber *mid = body[@"id"];
+  NSString *action = body[@"action"];
+  if (![mid isKindOfClass:[NSNumber class]] || ![action isKindOfClass:[NSString class]]) {
+    return;
+  }
+  goShellDeploy(mid.intValue, (char *)action.UTF8String);
+}
+
+// 程序已在运行时再次双击 .app（或从程序坞、启动台、open 打开），系统不会启动第二个实例，
+// 而是给本进程发“重新打开”事件：把管理窗口叫出来。
+- (void)handleReopen:(NSAppleEventDescriptor *)event withReply:(NSAppleEventDescriptor *)reply {
+  if (self.reopenURL != nil) {
+    [self showURL:self.reopenURL];
+  }
 }
 
 - (void)windowWillClose:(NSNotification *)note {
@@ -147,6 +175,27 @@ static RSWindowController *sharedController(void) {
 }
 
 @end
+
+void rsDeployDone(int mid, const char *json) {
+  NSString *js = [NSString stringWithFormat:@"window.__rsagentNativeDone && window.__rsagentNativeDone(%d, %s)", mid,
+                                            json];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [sharedController().webView evaluateJavaScript:js completionHandler:nil];
+  });
+}
+
+void rsInstallReopenHandler(const char *url) {
+  NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    RSWindowController *c = sharedController();
+    c.reopenURL = u;
+    // 必须在应用完成启动后注册，否则会被 AppKit 默认的处理器覆盖
+    [[NSAppleEventManager sharedAppleEventManager] setEventHandler:c
+                                                       andSelector:@selector(handleReopen:withReply:)
+                                                     forEventClass:kCoreEventClass
+                                                        andEventID:kAEReopenApplication];
+  });
+}
 
 void rsShowWindow(const char *url) {
   NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url]];

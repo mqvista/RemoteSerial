@@ -35,9 +35,10 @@ var iconICO []byte
 
 // Options 是壳层参数。
 type Options struct {
-	Listen  string // core 的本机监听地址
-	DataDir string
-	Log     *slog.Logger
+	Listen     string // core 的本机监听地址
+	DataDir    string
+	Log        *slog.Logger
+	Background bool // 启动时不弹出窗口
 }
 
 // Shell 是托盘加窗口的组合。
@@ -109,7 +110,9 @@ func (s *Shell) Run(ctx context.Context) error {
 		}
 	})
 	go s.runTray(baseURL)
-	s.Open()
+	if !s.o.Background {
+		s.Open()
+	}
 	for {
 		select {
 		case <-ctx.Done():

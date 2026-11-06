@@ -97,7 +97,13 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if err := deploy.ExecuteDetached(opts, deploy.ActionServiceRestart); err != nil {
+		if s.deps.Restart != nil {
+			// macOS：服务以用户身份运行，在本进程内重启
+			go func() {
+				time.Sleep(2 * time.Second)
+				s.deps.Restart()
+			}()
+		} else if err := deploy.ExecuteDetached(opts, deploy.ActionServiceRestart); err != nil {
 			writeError(w, http.StatusInternalServerError, i18n.Sprintf("程序已替换，但重启服务失败: %v", err))
 			return
 		}

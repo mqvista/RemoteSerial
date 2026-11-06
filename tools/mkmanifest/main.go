@@ -7,6 +7,7 @@
 //	    [-notes-file CHANGELOG.md] [-out dist/manifest.json]
 //
 // dir 下形如 rsagent-<os>-<arch>[.exe] 的文件进入 assets，键为 <os>-<arch>；
+// rsagent-macos.zip（.app 压缩包）作为 darwin-arm64 与 darwin-amd64 的 assets；
 // 目录里的其他文件（安装包、deb）只进 SHA256SUMS。
 package main
 
@@ -38,6 +39,9 @@ type manifest struct {
 	Assets      map[string]asset `json:"assets"`
 	Files       map[string]asset `json:"files,omitempty"` // 安装包等其他发布文件
 }
+
+// macAppZip 是 make macapp 生成的 .app 压缩包。
+const macAppZip = "rsagent-macos.zip"
 
 var binRe = regexp.MustCompile(`^rsagent-(windows|linux|darwin)-(amd64|arm64|386|arm)(\.exe)?$`)
 
@@ -81,6 +85,10 @@ func main() {
 		a := asset{URL: strings.TrimRight(*base, "/") + "/" + name, SHA256: sum, Size: size}
 		if mm := binRe.FindStringSubmatch(name); mm != nil {
 			m.Assets[mm[1]+"-"+mm[2]] = a
+		} else if name == macAppZip {
+			// macOS 自更新替换整个 .app；包内是通用二进制，两种架构共用一个文件
+			m.Assets["darwin-arm64"] = a
+			m.Assets["darwin-amd64"] = a
 		} else {
 			m.Files[name] = a
 		}

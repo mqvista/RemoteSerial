@@ -21,15 +21,16 @@ import (
 
 // Options 是 run 子命令的运行参数，命令行覆盖配置文件。
 type Options struct {
-	DataDir  string
-	Listen   string
-	LogLevel string
-	Console  bool
-	ShowUI   func() // 桌面模式下由壳层提供，用于单实例唤起窗口
-	Mode     string // standalone | service，空为 standalone
-	Handoff  func() // 部署页安装服务成功后调用，让本进程的 core 退位给服务
-	Restart  func() // 应用更新后重启本进程；空表示不支持
-	Quit     func() // 本机 POST /api/ui/quit 时退出本进程
+	DataDir    string
+	Listen     string
+	LogLevel   string
+	Console    bool
+	ShowUI     func() // 桌面模式下由壳层提供，用于单实例唤起窗口
+	Background bool   // ui：启动时不弹出窗口，只显示托盘/菜单栏图标
+	Mode       string // standalone | service，空为 standalone
+	Handoff    func() // 部署页安装服务成功后调用，让本进程的 core 退位给服务
+	Restart    func() // 应用更新后重启本进程；空表示不支持
+	Quit       func() // 本机 POST /api/ui/quit 时退出本进程
 }
 
 // Run 运行 core，阻塞到 ctx 取消。

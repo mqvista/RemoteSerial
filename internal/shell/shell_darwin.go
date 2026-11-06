@@ -22,7 +22,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +32,7 @@ import (
 
 	"fyne.io/systray"
 
+	"rsagent/internal/deploy"
 	"rsagent/internal/i18n"
 )
 
@@ -38,9 +41,10 @@ var iconTray []byte
 
 // Options 是壳层参数。
 type Options struct {
-	Listen  string // core 的本机监听地址
-	DataDir string
-	Log     *slog.Logger
+	Listen     string // core 的本机监听地址
+	DataDir    string
+	Log        *slog.Logger
+	Background bool // 启动时不弹出窗口
 }
 
 // Shell 是菜单栏图标加窗口的组合。
@@ -105,6 +109,37 @@ func (s *Shell) Quit() {
 	})
 }
 
+// nativeDeployActions 是允许页面经由本机窗口执行的动作：都需要管理员授权，
+// 而服务模式下的 core 是后台守护进程，弹不出授权框。
+var nativeDeployActions = map[string]bool{
+	deploy.ActionServiceInstall: true, deploy.ActionServiceRemove: true,
+	deploy.ActionServiceStart: true, deploy.ActionServiceStop: true, deploy.ActionServiceRestart: true,
+}
+
+//export goShellDeploy
+func goShellDeploy(id C.int, action *C.char) {
+	a := C.GoString(action)
+	current.Lock()
+	s := current.s
+	current.Unlock()
+	go func() {
+		res := deploy.Result{Action: a, Time: time.Now()}
+		if s == nil || !nativeDeployActions[a] {
+			res.Message = i18n.T("未知动作")
+		} else {
+			exe, _ := os.Executable()
+			if p, err := filepath.EvalSymlinks(exe); err == nil {
+				exe = p
+			}
+			res = deploy.Execute(deploy.Options{ExePath: exe, DataDir: s.o.DataDir, Listen: s.o.Listen, Log: s.o.Log}, a)
+		}
+		data, _ := json.Marshal(res)
+		cs := C.CString(string(data))
+		defer C.free(unsafe.Pointer(cs))
+		C.rsDeployDone(id, cs)
+	}()
+}
+
 //export goShellQuit
 func goShellQuit() {
 	current.Lock()
@@ -158,7 +193,13 @@ func (s *Shell) onReady() {
 	mOpen, mStatus, mBrowser, mData, mQuit := it.open, it.status, it.browser, it.data, it.quit
 	close(s.ready)
 
-	s.Open()
+	u := C.CString(s.baseURL)
+	C.rsInstallReopenHandler(u)
+	C.free(unsafe.Pointer(u))
+
+	if !s.o.Background {
+		s.Open()
+	}
 	go func() {
 		for {
 			select {
