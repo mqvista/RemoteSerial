@@ -66,7 +66,20 @@ macOS 的系统服务注册为 launchd 守护进程（`/Library/LaunchDaemons/Re
 
 界面语言支持 English 与正體中文，在网页右上角切换，保存在配置的 `language`（`en` / `zh-TW`，留空跟随系统）。网页、托盘/菜单栏、后端返回的提示与日志都跟随这一设置；命令行输出始终为英文。后端文字的译文在 `internal/i18n/catalog.go`，`go test ./internal/i18n` 会检查是否有遗漏。
 
-发布：打 tag `v0.4.0` 推送后，`.github/workflows/release.yml` 自动构建全部平台、deb、安装包、`manifest.json` 与 `SHA256SUMS` 并创建 GitHub Release。程序内自更新默认读取该 Release 的 `manifest.json`。
+发布：在 macOS 上本地编译并上传（Windows 安装包需在 Windows 上用 Inno Setup 打包，或从 Actions 产物取得）：
+
+```sh
+V=0.5.1
+git tag -a v$V -m v$V && git push origin v$V
+rm -rf dist && make web windows linux-arm64 linux-amd64 VERSION=$V
+make deb VERSION=$V ARCH=arm64 && make deb VERSION=$V ARCH=amd64   # 需要 nfpm
+make dmg VERSION=$V
+rm -f dist/rsagent-darwin-*        # 裸程序不发布，macOS 自更新走 rsagent-macos.zip
+make manifest VERSION=$V
+gh release create v$V --verify-tag --generate-notes dist/rsagent-* dist/*.deb dist/manifest.json dist/SHA256SUMS
+```
+
+`.github/workflows/release.yml` 只能在 Actions 页面手动触发，作为备用。程序内自更新默认读取最新 Release 的 `manifest.json`，仓库需为公开，或在设置中把清单地址改为自建服务器。
 
 ## 本地运行
 
