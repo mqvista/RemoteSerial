@@ -4,6 +4,7 @@ import { NAlert, NButton, NCard, NDynamicInput, NList, NListItem, NSpace, NTag, 
 import { api } from '../api'
 import type { InterfaceInfo, RouteStatus } from '../api'
 import { useStatus } from '../status'
+import { t } from '../i18n'
 
 const { status } = useStatus()
 const message = useMessage()
@@ -33,8 +34,8 @@ async function load() {
 }
 
 function approvedTag(cidr: string) {
-  if (!nodeRunning.value) return { type: 'default' as const, label: '节点未运行' }
-  return saved.value.approved.includes(cidr) ? { type: 'success' as const, label: '已批准' } : { type: 'warning' as const, label: '等待批准' }
+  if (!nodeRunning.value) return { type: 'default' as const, label: t('routes.nodeNotRunning') }
+  return saved.value.approved.includes(cidr) ? { type: 'success' as const, label: t('routes.approved') } : { type: 'warning' as const, label: t('routes.awaiting') }
 }
 
 function add(cidr: string) {
@@ -46,7 +47,7 @@ async function save() {
   try {
     saved.value = await api.setRoutes(routes.value.map((r) => r.trim()).filter(Boolean))
     routes.value = [...saved.value.advertised]
-    message.success('已保存并宣告')
+    message.success(t('routes.savedAdvertised'))
   } catch (e) {
     message.error(String(e))
   } finally {
@@ -59,16 +60,13 @@ onMounted(load)
 
 <template>
   <NSpace vertical :size="16">
-    <NAlert type="info">
-      子网路由把远端局域网宣告到 tailnet，本地设备就能直接访问远端网段里的其他设备。宣告后需要在 Tailscale 后台批准，或在 ACL 里为
-      tag 配置 autoApprovers。用户态转发只支持 TCP 和 UDP，ping 远端设备不通属正常；源地址会做 SNAT。不要宣告与本地网段重叠的网段。
-    </NAlert>
+    <NAlert type="info">{{ t('routes.intro') }}</NAlert>
 
-    <NCard title="宣告的网段">
+    <NCard :title="t('routes.advertised')">
       <template #header-extra>
-        <NButton type="primary" size="small" :loading="busy" :disabled="!dirty" @click="save">保存并宣告</NButton>
+        <NButton type="primary" size="small" :loading="busy" :disabled="!dirty" @click="save">{{ t('routes.saveAdvertise') }}</NButton>
       </template>
-      <NDynamicInput v-model:value="routes" placeholder="如 192.168.10.0/24" :min="0">
+      <NDynamicInput v-model:value="routes" :placeholder="t('routes.placeholder')" :min="0">
         <template #default="{ index }">
           <NSpace align="center" style="width: 100%">
             <input v-model="routes[index]" class="cidr-input" placeholder="192.168.10.0/24" />
@@ -76,24 +74,24 @@ onMounted(load)
           </NSpace>
         </template>
       </NDynamicInput>
-      <NText v-if="!routes.length" depth="3">尚未宣告任何网段。</NText>
+      <NText v-if="!routes.length" depth="3">{{ t('routes.none') }}</NText>
     </NCard>
 
-    <NCard title="本机所在网段">
+    <NCard :title="t('routes.local')">
       <template #header-extra>
-        <NButton size="small" quaternary @click="showHidden = !showHidden">{{ showHidden ? '隐藏虚拟网卡' : '显示全部' }}</NButton>
+        <NButton size="small" quaternary @click="showHidden = !showHidden">{{ showHidden ? t('routes.hideVirtual') : t('routes.showAll') }}</NButton>
       </template>
       <NList hoverable clickable>
         <NListItem v-for="i in visibleIfaces" :key="i.name + i.cidr" @click="add(i.cidr)">
-          <NThing :title="i.cidr" :description="`${i.name} · 本机 ${i.ip}`">
+          <NThing :title="i.cidr" :description="t('routes.localIP', { name: i.name, ip: i.ip })">
             <template #header-extra>
-              <NTag v-if="routes.includes(i.cidr)" size="small" type="success">已加入</NTag>
-              <NButton v-else size="tiny">加入</NButton>
+              <NTag v-if="routes.includes(i.cidr)" size="small" type="success">{{ t('routes.added') }}</NTag>
+              <NButton v-else size="tiny">{{ t('routes.add') }}</NButton>
             </template>
           </NThing>
         </NListItem>
       </NList>
-      <NText v-if="!visibleIfaces.length" depth="3">没有可用的网段。</NText>
+      <NText v-if="!visibleIfaces.length" depth="3">{{ t('routes.noIfaces') }}</NText>
     </NCard>
   </NSpace>
 </template>

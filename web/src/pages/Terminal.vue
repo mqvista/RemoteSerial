@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useRoute } from 'vue-router'
 import { useStatus } from '../status'
+import { t } from '../i18n'
 
 const { status } = useStatus()
 const message = useMessage()
@@ -26,11 +27,11 @@ let ws: WebSocket | null = null
 let resizeObs: ResizeObserver | null = null
 
 const bridgeOptions = computed(() => (status.value?.bridges ?? []).map((b) => ({ label: `${b.name || b.id}  (${b.resolvedPort || b.port}, ${b.active})`, value: b.id })))
-const lineOptions = [
-  { label: '回车发送 CRLF', value: '\r\n' },
-  { label: '回车发送 LF', value: '\n' },
-  { label: '回车发送 CR', value: '\r' },
-]
+const lineOptions = computed(() => [
+  { label: t('term.crlf'), value: '\r\n' },
+  { label: t('term.lf'), value: '\n' },
+  { label: t('term.cr'), value: '\r' },
+])
 
 function ensureTerm() {
   if (term || !termEl.value) return
@@ -73,7 +74,7 @@ function writeBytes(buf: ArrayBuffer) {
 function connect() {
   disconnect()
   if (!bridgeId.value) {
-    message.warning('请选择桥接')
+    message.warning(t('term.selectBridge'))
     return
   }
   ensureTerm()
@@ -115,7 +116,7 @@ function disconnect() {
 function sendControl(cmd: Record<string, unknown>) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return
   if (!readWrite.value) {
-    message.warning('只读模式下不能操作控制线')
+    message.warning(t('term.roNoLines'))
     return
   }
   ws.send(JSON.stringify(cmd))
@@ -177,30 +178,30 @@ onBeforeUnmount(() => {
   <NSpace vertical :size="12" style="height: calc(100vh - 120px)">
     <NCard size="small">
       <NSpace align="center">
-        <NSelect v-model:value="bridgeId" :options="bridgeOptions" style="width: 320px" placeholder="选择桥接" :disabled="connected" />
-        <NButton v-if="!connected" type="primary" @click="connect">连接</NButton>
-        <NButton v-else @click="disconnect">断开</NButton>
-        <NSwitch v-model:value="readWrite"><template #checked>读写</template><template #unchecked>只读</template></NSwitch>
-        <NSelect v-model:value="lineEnding" :options="lineOptions" style="width: 160px" size="small" />
-        <NSwitch v-model:value="hexView" size="small"><template #checked>HEX</template><template #unchecked>文本</template></NSwitch>
+        <NSelect v-model:value="bridgeId" :options="bridgeOptions" style="width: 320px" :placeholder="t('term.selectBridge')" :disabled="connected" />
+        <NButton v-if="!connected" type="primary" @click="connect">{{ t('term.connect') }}</NButton>
+        <NButton v-else @click="disconnect">{{ t('term.disconnect') }}</NButton>
+        <NSwitch v-model:value="readWrite"><template #checked>{{ t('term.rw') }}</template><template #unchecked>{{ t('term.ro') }}</template></NSwitch>
+        <NSelect v-model:value="lineEnding" :options="lineOptions" style="width: 170px" size="small" />
+        <NSwitch v-model:value="hexView" size="small"><template #checked>HEX</template><template #unchecked>{{ t('term.text') }}</template></NSwitch>
         <NButton size="small" :disabled="!connected" @click="sendControl({ type: 'break' })">Break</NButton>
         <NButton size="small" :disabled="!connected" :type="termStatus?.dtr ? 'success' : 'default'" @click="sendControl({ type: 'dtr', on: !termStatus?.dtr })">DTR</NButton>
         <NButton size="small" :disabled="!connected" :type="termStatus?.rts ? 'success' : 'default'" @click="sendControl({ type: 'rts', on: !termStatus?.rts })">RTS</NButton>
-        <NButton size="small" @click="clearScreen">清屏</NButton>
-        <NButton size="small" @click="downloadBuffer">下载</NButton>
+        <NButton size="small" @click="clearScreen">{{ t('term.clear') }}</NButton>
+        <NButton size="small" @click="downloadBuffer">{{ t('term.download') }}</NButton>
       </NSpace>
       <NSpace align="center" style="margin-top: 8px">
-        <NTag size="small" :type="connected ? 'success' : 'default'">{{ connected ? '已连接' : '未连接' }}</NTag>
+        <NTag size="small" :type="connected ? 'success' : 'default'">{{ connected ? t('term.connected') : t('term.disconnected') }}</NTag>
         <template v-if="termStatus">
-          <NTag size="small" :type="termStatus.deviceOpen ? 'success' : 'warning'">{{ termStatus.deviceOpen ? '设备在线' : '设备离线' }}</NTag>
+          <NTag size="small" :type="termStatus.deviceOpen ? 'success' : 'warning'">{{ termStatus.deviceOpen ? t('term.deviceOnline') : t('term.deviceOffline') }}</NTag>
           <NText depth="3">{{ termStatus.active }}</NText>
-          <NText v-if="termStatus.client" depth="3">TCP 客户端：{{ termStatus.client }}</NText>
-          <NText depth="3">旁观 {{ termStatus.viewers }}</NText>
+          <NText v-if="termStatus.client" depth="3">{{ t('term.tcpClient', { c: termStatus.client }) }}</NText>
+          <NText depth="3">{{ t('term.viewers', { n: termStatus.viewers }) }}</NText>
         </template>
-        <input v-model="quickInput" class="quick" placeholder="输入一行后回车发送（读写模式）" :disabled="!connected || !readWrite" @keydown.enter="sendQuick" />
+        <input v-model="quickInput" class="quick" :placeholder="t('term.quickPh')" :disabled="!connected || !readWrite" @keydown.enter="sendQuick" />
       </NSpace>
     </NCard>
-    <NAlert v-if="!status?.bridges.length" type="info">还没有桥接，请先在"串口桥接"页新增。</NAlert>
+    <NAlert v-if="!status?.bridges.length" type="info">{{ t('term.noBridges') }}</NAlert>
     <div ref="termEl" class="term" />
   </NSpace>
 </template>

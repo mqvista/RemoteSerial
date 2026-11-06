@@ -24,6 +24,7 @@ import type { DataTableColumns, SelectOption } from 'naive-ui'
 import { api, BAUD_RATES, formatBytes } from '../api'
 import type { BridgeConfig, BridgeStatus, CaptureFile, SerialPort } from '../api'
 import { useStatus } from '../status'
+import { formatTime, t, tOr } from '../i18n'
 
 const { status } = useStatus()
 const message = useMessage()
@@ -47,10 +48,10 @@ async function toggleCapture(id: string) {
   try {
     if (s?.capture?.active) {
       await api.captureStop(id)
-      message.success('已停止录制')
+      message.success(t('bridges.recordingStopped'))
     } else {
       const r = await api.captureStart(id)
-      message.success(`开始录制：${r.base}`)
+      message.success(t('bridges.recordingStarted', { base: r.base }))
     }
   } catch (e) {
     message.error(String(e))
@@ -63,7 +64,7 @@ async function toggleCapture(id: string) {
 async function deleteCapture(name: string) {
   try {
     await api.deleteCapture(name)
-    message.success('已删除')
+    message.success(t('common.deleted'))
   } catch (e) {
     message.error(String(e))
   } finally {
@@ -71,32 +72,34 @@ async function deleteCapture(name: string) {
   }
 }
 
-const captureColumns: DataTableColumns<CaptureFile> = [
-  { title: '文件', key: 'name', minWidth: 220, ellipsis: { tooltip: true } },
-  { title: '大小', key: 'size', width: 100, render: (f) => formatBytes(f.size) },
-  { title: '时间', key: 'modTime', width: 170, render: (f) => new Date(f.modTime).toLocaleString('zh-CN', { hour12: false }) },
+const captureColumns = computed<DataTableColumns<CaptureFile>>(() => [
+  { title: t('captures.file'), key: 'name', minWidth: 220, ellipsis: { tooltip: true } },
+  { title: t('captures.size'), key: 'size', width: 100, render: (f) => formatBytes(f.size) },
+  { title: t('captures.time'), key: 'modTime', width: 180, render: (f) => formatTime(f.modTime) },
   {
-    title: '操作',
+    title: t('captures.actions'),
     key: 'actions',
     width: 130,
     render: (f) =>
       h(NSpace, { size: 4, wrap: false }, {
         default: () => [
-          h('a', { href: `/api/captures/${encodeURIComponent(f.name)}`, download: f.name, style: 'font-size:12px' }, '下载'),
-          h(NPopconfirm, { onPositiveClick: () => deleteCapture(f.name) }, { trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => '删除' }), default: () => '删除此文件？' }),
+          h('a', { href: `/api/captures/${encodeURIComponent(f.name)}`, download: f.name, style: 'font-size:12px' }, t('common.download')),
+          h(NPopconfirm, { onPositiveClick: () => deleteCapture(f.name) }, { trigger: () => h(NButton, { size: 'tiny', type: 'error', ghost: true }, { default: () => t('common.delete') }), default: () => t('captures.deleteConfirm') }),
         ],
       }),
   },
-]
+])
 
-const portColumns: DataTableColumns<SerialPort> = [
-  { title: '串口', key: 'name', width: 110 },
-  { title: '类型', key: 'isUSB', width: 70, render: (p) => (p.isUSB ? 'USB' : '板载') },
-  { title: '芯片', key: 'chip', minWidth: 160, ellipsis: { tooltip: true }, render: (p) => p.chip || '-' },
-  { title: 'VID:PID', key: 'vidpid', width: 100, render: (p) => (p.vid ? `${p.vid}:${p.pid}` : '-') },
-  { title: '序列号', key: 'serialNumber', minWidth: 120, ellipsis: { tooltip: true }, render: (p) => p.serialNumber || '-' },
-  { title: '占用', key: 'usedBy', width: 100, ellipsis: { tooltip: true }, render: (p) => p.usedBy || '-' },
-]
+// 串口名在 macOS/Linux 上很长（/dev/cu.usbserial-XXXX），列宽要够，超出时省略并悬停显示全名，
+// 否则全局 nowrap 会让文字溢出盖住相邻列。
+const portColumns = computed<DataTableColumns<SerialPort>>(() => [
+  { title: t('ports.port'), key: 'name', width: 300, ellipsis: { tooltip: true }, className: 'mono' },
+  { title: t('ports.type'), key: 'isUSB', width: 90, render: (p) => (p.isUSB ? 'USB' : t('ports.typeOther')) },
+  { title: t('ports.chip'), key: 'chip', minWidth: 140, ellipsis: { tooltip: true }, render: (p) => p.chip || '-' },
+  { title: 'VID:PID', key: 'vidpid', width: 110, render: (p) => (p.vid ? `${p.vid}:${p.pid}` : '-') },
+  { title: t('ports.serial'), key: 'serialNumber', minWidth: 130, ellipsis: { tooltip: true }, render: (p) => p.serialNumber || '-' },
+  { title: t('ports.usedBy'), key: 'usedBy', minWidth: 110, ellipsis: { tooltip: true }, render: (p) => p.usedBy || '-' },
+])
 
 const busy = ref(false)
 const showEditor = ref(false)
@@ -129,7 +132,7 @@ async function loadPorts() {
 
 const portOptions = computed<SelectOption[]>(() =>
   ports.value.map((p) => {
-    const extra = [p.chip, p.vid && p.pid ? `${p.vid}:${p.pid}` : '', p.serialNumber ? `SN ${p.serialNumber}` : '', p.usedBy ? `已被 ${p.usedBy} 占用` : '']
+    const extra = [p.chip, p.vid && p.pid ? `${p.vid}:${p.pid}` : '', p.serialNumber ? `SN ${p.serialNumber}` : '', p.usedBy ? t('ports.optUsedBy', { by: p.usedBy }) : '']
       .filter(Boolean)
       .join(' · ')
     return { label: extra ? `${p.name}  (${extra})` : p.name, value: p.name }
@@ -137,40 +140,39 @@ const portOptions = computed<SelectOption[]>(() =>
 )
 
 const baudOptions = BAUD_RATES.map((b) => ({ label: String(b), value: b }))
-const parityOptions = [
-  { label: '无 (N)', value: 'N' },
-  { label: '偶 (E)', value: 'E' },
-  { label: '奇 (O)', value: 'O' },
+const parityOptions = computed(() => [
+  { label: t('parity.N'), value: 'N' },
+  { label: t('parity.E'), value: 'E' },
+  { label: t('parity.O'), value: 'O' },
   { label: 'Mark (M)', value: 'M' },
   { label: 'Space (S)', value: 'S' },
-]
+])
 const stopOptions = [
   { label: '1', value: 1 },
   { label: '1.5', value: 1.5 },
   { label: '2', value: 2 },
 ]
-const modeOptions = [
-  { label: '裸 TCP：任何 TCP 客户端可连，参数固定', value: 'raw' },
-  { label: 'RFC2217：客户端可改波特率、拉 DTR/RTS', value: 'rfc2217' },
-]
-const policyOptions = [
-  { label: '新连接替换旧连接', value: 'replace' },
-  { label: '拒绝新连接', value: 'reject' },
-]
+const modeOptions = computed(() => [
+  { label: t('mode.raw'), value: 'raw' },
+  { label: t('mode.rfc2217'), value: 'rfc2217' },
+])
+const policyOptions = computed(() => [
+  { label: t('policy.replace'), value: 'replace' },
+  { label: t('policy.reject'), value: 'reject' },
+])
 
 type TagType = 'default' | 'info' | 'success' | 'warning' | 'error'
-const stateMap: Record<string, [string, TagType]> = {
-  Disabled: ['已停用', 'default'],
-  WaitingNetwork: ['等待节点上线', 'warning'],
-  WaitingDevice: ['等待设备', 'warning'],
-  Listening: ['监听中', 'info'],
-  Connected: ['已连接', 'success'],
-  Error: ['错误', 'error'],
+const stateTypes: Record<string, TagType> = {
+  Disabled: 'default',
+  WaitingNetwork: 'warning',
+  WaitingDevice: 'warning',
+  Listening: 'info',
+  Connected: 'success',
+  Error: 'error',
 }
 function stateInfo(s?: BridgeStatus): { label: string; type: TagType } {
-  if (!s) return { label: '未知', type: 'default' }
-  const [label, type] = stateMap[s.state] ?? [s.state, 'default']
-  return { label, type }
+  if (!s) return { label: t('common.unknown'), type: 'default' }
+  return { label: tOr(`bridgeState.${s.state}`, s.state), type: stateTypes[s.state] ?? 'default' }
 }
 
 function paramsText(c: BridgeConfig): string {
@@ -182,9 +184,9 @@ function paramsText(c: BridgeConfig): string {
 function clientSince(s?: BridgeStatus): string {
   if (!s?.clientSince) return ''
   const sec = Math.max(0, Math.floor((Date.now() - new Date(s.clientSince).getTime()) / 1000))
-  if (sec < 60) return `${sec} 秒`
-  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟`
-  return `${Math.floor(sec / 3600)} 小时 ${Math.floor((sec % 3600) / 60)} 分`
+  if (sec < 60) return t('time.sec', { n: sec })
+  if (sec < 3600) return t('time.min', { n: Math.floor(sec / 60) })
+  return t('time.hm', { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) })
 }
 
 function nextTCPPort(): number {
@@ -262,19 +264,19 @@ async function submitEditor() {
   const e = editing.value
   if (!e.name.trim()) e.name = e.port || e.id
   if (!e.port && !e.match) {
-    message.warning('请选择串口')
+    message.warning(t('bridges.selectPort'))
     return
   }
   const list = configs.value.filter((c) => c.id !== e.id)
   list.push(e)
   list.sort((a, b) => a.tcpPort - b.tcpPort)
-  if (await saveAll(list, editingIsNew.value ? '已添加' : '已保存')) showEditor.value = false
+  if (await saveAll(list, editingIsNew.value ? t('common.added') : t('common.saved'))) showEditor.value = false
 }
 
 async function remove(id: string) {
   await saveAll(
     configs.value.filter((c) => c.id !== id),
-    '已删除',
+    t('common.deleted'),
   )
 }
 
@@ -284,7 +286,7 @@ async function action(id: string, act: 'start' | 'stop' | 'kick') {
     const r = await api.bridgeAction(id, act)
     configs.value = r.bridges.map((b) => b.config)
     if (r.warning) message.warning(r.warning)
-    else message.success({ start: '已启动', stop: '已停止', kick: '已断开客户端' }[act])
+    else message.success({ start: t('common.started'), stop: t('common.stopped'), kick: t('bridges.kicked') }[act])
   } catch (e) {
     message.error(String(e))
   } finally {
@@ -305,85 +307,85 @@ onMounted(() => {
 
 <template>
   <NSpace vertical :size="16">
-    <NAlert v-if="!nodeRunning" type="warning">Tailscale 节点未上线，桥接会在节点上线后自动开始监听。</NAlert>
-    <NCard title="串口桥接">
+    <NAlert v-if="!nodeRunning" type="warning">{{ t('bridges.nodeOffline') }}</NAlert>
+    <NCard :title="t('bridges.title')">
       <template #header-extra>
         <NSpace :size="8">
-          <NButton size="small" @click="loadPorts">刷新串口</NButton>
-          <NButton size="small" type="primary" @click="openNew">新增桥接</NButton>
+          <NButton size="small" @click="loadPorts">{{ t('bridges.refreshPorts') }}</NButton>
+          <NButton size="small" type="primary" @click="openNew">{{ t('bridges.new') }}</NButton>
         </NSpace>
       </template>
 
-      <NEmpty v-if="!configs.length" description="还没有桥接，点右上角“新增桥接”" />
+      <NEmpty v-if="!configs.length" :description="t('bridges.empty')" />
       <div v-else class="bridge-list">
         <div v-for="c in configs" :key="c.id" class="bridge-item" :class="{ disabled: !c.enabled }">
           <div class="bridge-head">
             <div class="bridge-title">
               <span class="bridge-name" :title="c.name || c.id">{{ c.name || c.id }}</span>
               <NTag size="small" :type="stateInfo(statusById[c.id]).type" :bordered="false">{{ stateInfo(statusById[c.id]).label }}</NTag>
-              <NTag size="small" :bordered="false">{{ c.mode === 'rfc2217' ? 'RFC2217' : '裸 TCP' }}</NTag>
-              <NTag v-if="statusById[c.id]?.capture?.active" size="small" type="warning" :bordered="false">录制中</NTag>
+              <NTag size="small" :bordered="false">{{ c.mode === 'rfc2217' ? 'RFC2217' : t('bridges.raw') }}</NTag>
+              <NTag v-if="statusById[c.id]?.capture?.active" size="small" type="warning" :bordered="false">{{ t('bridges.recording') }}</NTag>
             </div>
             <div class="bridge-actions">
-              <NButton v-if="c.enabled" size="tiny" @click="action(c.id, 'stop')">停止</NButton>
-              <NButton v-else size="tiny" type="primary" @click="action(c.id, 'start')">启动</NButton>
-              <NButton size="tiny" :disabled="!c.enabled" @click="openTerminal(c.id)">终端</NButton>
-              <NButton size="tiny" :disabled="!statusById[c.id]?.client" @click="action(c.id, 'kick')">踢掉</NButton>
+              <NButton v-if="c.enabled" size="tiny" @click="action(c.id, 'stop')">{{ t('common.stop') }}</NButton>
+              <NButton v-else size="tiny" type="primary" @click="action(c.id, 'start')">{{ t('common.start') }}</NButton>
+              <NButton size="tiny" :disabled="!c.enabled" @click="openTerminal(c.id)">{{ t('bridges.terminal') }}</NButton>
+              <NButton size="tiny" :disabled="!statusById[c.id]?.client" @click="action(c.id, 'kick')">{{ t('bridges.kick') }}</NButton>
               <NButton size="tiny" :type="statusById[c.id]?.capture?.active ? 'warning' : 'default'" :disabled="!c.enabled" @click="toggleCapture(c.id)">
-                {{ statusById[c.id]?.capture?.active ? '停止录制' : '录制' }}
+                {{ statusById[c.id]?.capture?.active ? t('bridges.stopRecord') : t('bridges.record') }}
               </NButton>
-              <NButton size="tiny" @click="openEdit(c)">编辑</NButton>
+              <NButton size="tiny" @click="openEdit(c)">{{ t('common.edit') }}</NButton>
               <NPopconfirm @positive-click="remove(c.id)">
                 <template #trigger>
-                  <NButton size="tiny" type="error" ghost>删除</NButton>
+                  <NButton size="tiny" type="error" ghost>{{ t('common.delete') }}</NButton>
                 </template>
-                删除此桥接？
+                {{ t('bridges.deleteConfirm') }}
               </NPopconfirm>
             </div>
           </div>
 
           <div class="bridge-meta">
             <div class="meta">
-              <span class="k">串口</span>
+              <span class="k">{{ t('bridges.metaPort') }}</span>
               <span class="v">
-                {{ statusById[c.id]?.resolvedPort || c.port || '(按 USB 匹配)' }}
-                <NText v-if="c.match" depth="3" class="sub">USB 匹配</NText>
+                <span class="clip mono" :title="statusById[c.id]?.resolvedPort || c.port">{{ statusById[c.id]?.resolvedPort || c.port || t('bridges.byUSB') }}</span>
+                <NText v-if="c.match" depth="3" class="sub">{{ t('bridges.usbMatch') }}</NText>
               </span>
             </div>
             <div class="meta">
-              <span class="k">参数</span>
+              <span class="k">{{ t('bridges.metaParams') }}</span>
               <span class="v">
                 {{ paramsText(c) }}
-                <NTag v-if="statusById[c.id]?.paramsBy === 'client'" size="tiny" type="info" :bordered="false">客户端设置</NTag>
+                <NTag v-if="statusById[c.id]?.paramsBy === 'client'" size="tiny" type="info" :bordered="false">{{ t('bridges.clientSet') }}</NTag>
               </span>
             </div>
             <div class="meta">
-              <span class="k">端口</span>
+              <span class="k">{{ t('bridges.metaTCP') }}</span>
               <span class="v">
                 {{ c.tcpPort }}
-                <NText v-if="c.localPort" depth="3" class="sub">本机 {{ c.localPort }}</NText>
+                <NText v-if="c.localPort" depth="3" class="sub">{{ t('bridges.localPort', { n: c.localPort }) }}</NText>
               </span>
             </div>
             <div class="meta">
-              <span class="k">客户端</span>
+              <span class="k">{{ t('bridges.metaClient') }}</span>
               <span class="v">
                 <template v-if="statusById[c.id]?.client">
-                  {{ statusById[c.id].client }}
+                  <span class="clip" :title="statusById[c.id].client">{{ statusById[c.id].client }}</span>
                   <NText depth="3" class="sub">{{ clientSince(statusById[c.id]) }}</NText>
                 </template>
-                <NText v-else depth="3">无</NText>
-                <NText v-if="statusById[c.id]?.viewers" depth="3" class="sub">终端 {{ statusById[c.id].viewers }} 人</NText>
+                <NText v-else depth="3">{{ t('common.none') }}</NText>
+                <NText v-if="statusById[c.id]?.viewers" depth="3" class="sub">{{ t('bridges.viewers', { n: statusById[c.id].viewers }) }}</NText>
               </span>
             </div>
             <div class="meta">
-              <span class="k">流量</span>
-              <span class="v" title="设备→TCP / TCP→设备">
+              <span class="k">{{ t('bridges.metaTraffic') }}</span>
+              <span class="v" :title="t('bridges.trafficTip')">
                 <template v-if="statusById[c.id]">↓ {{ formatBytes(statusById[c.id].fromDevice) }} ↑ {{ formatBytes(statusById[c.id].toDevice) }}</template>
                 <template v-else>-</template>
               </span>
             </div>
             <div v-if="statusById[c.id]?.deviceOpen" class="meta">
-              <span class="k">控制线</span>
+              <span class="k">{{ t('bridges.metaLines') }}</span>
               <span class="v lines">
                 <NTag size="tiny" :type="statusById[c.id].dtr ? 'success' : 'default'" :bordered="false">DTR</NTag>
                 <NTag size="tiny" :type="statusById[c.id].rts ? 'success' : 'default'" :bordered="false">RTS</NTag>
@@ -396,79 +398,84 @@ onMounted(() => {
 
       <template v-if="configs.length">
         <NText depth="3" style="display: block; margin-top: 12px; font-size: 12px">
-          本地连接示例：裸 TCP 用 <code>nc {{ status?.tailscale.ip || '100.x.y.z' }} {{ configs[0].tcpPort }}</code> 或串口工具的 TCP 客户端模式；RFC2217 用
-          <code>rfc2217://{{ status?.tailscale.ip || '100.x.y.z' }}:{{ configs[0].tcpPort }}</code>（pyserial、esptool、PlatformIO），需要 COMx 的工具用 com0com + hub4com 映射。
+          {{ t('bridges.example1') }} <code>nc {{ status?.tailscale.ip || '100.x.y.z' }} {{ configs[0].tcpPort }}</code> {{ t('bridges.example2') }}
+          <code>rfc2217://{{ status?.tailscale.ip || '100.x.y.z' }}:{{ configs[0].tcpPort }}</code> {{ t('bridges.example3') }}
         </NText>
       </template>
     </NCard>
 
-    <NCard title="录制文件">
+    <NCard :title="t('captures.title')">
       <template #header-extra>
-        <NButton size="small" @click="loadCaptures">刷新</NButton>
+        <NButton size="small" @click="loadCaptures">{{ t('common.refresh') }}</NButton>
       </template>
       <NText depth="3" style="display: block; margin-bottom: 8px; font-size: 12px">
-        录制把设备输出写入 .rx.bin，写入设备的数据写入 .tx.bin，原始字节，可用 hex 工具打开。文件在数据目录 logs 下。
+        {{ t('captures.hint') }}
       </NText>
-      <NDataTable :columns="captureColumns" :data="captures" size="small" :bordered="false" :scroll-x="620" />
+      <NDataTable :columns="captureColumns" :data="captures" size="small" :bordered="false" :scroll-x="640" />
     </NCard>
 
-    <NCard title="本机串口">
-      <NDataTable :columns="portColumns" :data="ports" size="small" :bordered="false" :scroll-x="660" />
+    <NCard :title="t('ports.title')">
+      <template #header-extra>
+        <NButton size="small" @click="loadPorts">{{ t('common.refresh') }}</NButton>
+      </template>
+      <NDataTable :columns="portColumns" :data="ports" size="small" :bordered="false" :scroll-x="880" table-layout="fixed">
+        <template #empty><NEmpty :description="t('ports.empty')" /></template>
+      </NDataTable>
     </NCard>
 
-    <NModal v-model:show="showEditor" preset="card" :title="editingIsNew ? '新增桥接' : '编辑桥接'" class="editor-modal">
-      <NForm v-if="editing" label-placement="left" label-width="110">
-        <NFormItem label="名称">
-          <NInput v-model:value="editing.name" placeholder="如：主控板调试口" />
+    <NModal v-model:show="showEditor" preset="card" :title="editingIsNew ? t('editor.new') : t('editor.edit')" class="editor-modal">
+      <NForm v-if="editing" label-placement="left" label-width="auto">
+        <NFormItem :label="t('editor.name')">
+          <NInput v-model:value="editing.name" :placeholder="t('editor.namePh')" />
         </NFormItem>
-        <NFormItem label="串口">
-          <NSelect v-model:value="editing.port" :options="portOptions" filterable tag placeholder="选择或输入串口名" />
+        <NFormItem :label="t('editor.port')">
+          <NSelect v-model:value="editing.port" :options="portOptions" filterable tag :placeholder="t('editor.portPh')" />
         </NFormItem>
-        <NFormItem label="USB 匹配">
+        <NFormItem :label="t('editor.usb')">
           <NSpace vertical :size="4">
-            <NCheckbox :checked="matchByUSB" @update:checked="onMatchToggle">按 VID/PID/序列号匹配，COM 号变化时仍能找到设备</NCheckbox>
+            <NCheckbox :checked="matchByUSB" @update:checked="onMatchToggle">{{ t('editor.usbHint') }}</NCheckbox>
             <NSpace v-if="matchByUSB && editing.match">
               <NInput v-model:value="editing.match.vid" placeholder="VID" style="width: 100px" />
               <NInput v-model:value="editing.match.pid" placeholder="PID" style="width: 100px" />
-              <NInput v-model:value="editing.match.serial" placeholder="序列号（可空）" style="width: 220px" />
+              <NInput v-model:value="editing.match.serial" :placeholder="t('editor.serialPh')" style="width: 220px" />
             </NSpace>
           </NSpace>
         </NFormItem>
-        <NFormItem label="波特率">
+        <NFormItem :label="t('editor.baud')">
           <NSelect v-model:value="editing.baud" :options="baudOptions" filterable tag />
         </NFormItem>
-        <NFormItem label="数据位 / 校验 / 停止位">
+        <NFormItem :label="t('editor.frame')">
           <NSpace>
             <NInputNumber v-model:value="editing.dataBits" :min="5" :max="8" style="width: 90px" />
             <NSelect v-model:value="editing.parity" :options="parityOptions" style="width: 130px" />
             <NSelect v-model:value="editing.stopBits" :options="stopOptions" style="width: 90px" />
           </NSpace>
         </NFormItem>
-        <NFormItem label="模式">
+        <NFormItem :label="t('editor.mode')">
           <NSelect v-model:value="editing.mode" :options="modeOptions" />
         </NFormItem>
-        <NFormItem label="TCP 端口">
+        <NFormItem :label="t('editor.tcpPort')">
           <NInputNumber v-model:value="editing.tcpPort" :min="1" :max="65535" />
-          <NText depth="3" style="margin-left: 12px; font-size: 12px">tailnet 内访问 节点IP:端口</NText>
+          <NText depth="3" style="margin-left: 12px; font-size: 12px">{{ t('editor.tcpHint') }}</NText>
         </NFormItem>
-        <NFormItem label="本机端口">
-          <NInputNumber v-model:value="editing.localPort" :min="0" :max="65535" placeholder="0 为不监听" />
-          <NText depth="3" style="margin-left: 12px; font-size: 12px">可选，同时在 127.0.0.1 监听，供远端本机的串口工具使用</NText>
+        <NFormItem :label="t('editor.localPort')">
+          <NInputNumber v-model:value="editing.localPort" :min="0" :max="65535" :placeholder="t('editor.localPh')" />
+          <NText depth="3" style="margin-left: 12px; font-size: 12px">{{ t('editor.localHint') }}</NText>
         </NFormItem>
-        <NFormItem label="客户端策略">
+        <NFormItem :label="t('editor.policy')">
           <NSelect v-model:value="editing.clientPolicy" :options="policyOptions" />
         </NFormItem>
-        <NFormItem label="空闲超时(秒)">
-          <NInputNumber v-model:value="editing.idleTimeoutSec" :min="0" placeholder="0 为不超时" />
+        <NFormItem :label="t('editor.idle')">
+          <NInputNumber v-model:value="editing.idleTimeoutSec" :min="0" :placeholder="t('editor.idlePh')" />
         </NFormItem>
-        <NFormItem label="启用">
-          <NCheckbox v-model:checked="editing.enabled">保存后立即启动</NCheckbox>
+        <NFormItem :label="t('editor.enabled')">
+          <NCheckbox v-model:checked="editing.enabled">{{ t('editor.enabledHint') }}</NCheckbox>
         </NFormItem>
       </NForm>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showEditor = false">取消</NButton>
-          <NButton type="primary" :loading="busy" @click="submitEditor">保存</NButton>
+          <NButton @click="showEditor = false">{{ t('common.cancel') }}</NButton>
+          <NButton type="primary" :loading="busy" @click="submitEditor">{{ t('common.save') }}</NButton>
         </NSpace>
       </template>
     </NModal>
@@ -528,6 +535,8 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
 }
 .meta .k {
   opacity: 0.6;
@@ -537,6 +546,17 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+.meta .clip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mono,
+:deep(td.mono) {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
 }
 .meta .sub {
   font-size: 12px;

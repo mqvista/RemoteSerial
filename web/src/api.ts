@@ -1,4 +1,5 @@
 // 与 core 的 REST API 对接。路径清单见方案文档 4.3 节。
+import { t } from './i18n'
 
 export interface TailscaleSnapshot {
   state: string
@@ -104,6 +105,8 @@ export interface SerialPort {
 }
 
 export interface Status {
+  language?: string
+  languageAuto?: boolean
   version: string
   commit: string
   mode: string
@@ -241,6 +244,7 @@ export interface SettingsUpdate {
   tags?: string[]
   updateURL?: string
   updateAutoCheck?: boolean
+  language?: string
 }
 
 export interface SettingsResponse {
@@ -350,9 +354,9 @@ export function formatUptime(sec: number): string {
   const h = Math.floor((sec % 86400) / 3600)
   const m = Math.floor((sec % 3600) / 60)
   const s = Math.floor(sec % 60)
-  if (d > 0) return `${d} 天 ${h} 时 ${m} 分`
-  if (h > 0) return `${h} 时 ${m} 分 ${s} 秒`
-  return `${m} 分 ${s} 秒`
+  if (d > 0) return t('time.dhm', { d, h, m })
+  if (h > 0) return t('time.hms', { h, m, s })
+  return t('time.ms', { m, s })
 }
 
 export function formatBytes(n: number): string {

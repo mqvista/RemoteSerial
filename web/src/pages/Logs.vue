@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { h, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import { NDataTable, NSelect, NSpace, NSwitch, NTag, NText } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { api } from '../api'
 import type { LogEntry } from '../api'
+import { formatTime, t } from '../i18n'
 
 const entries = ref<LogEntry[]>([])
 const level = ref('debug')
 const autoRefresh = ref(true)
 let timer: number | undefined
 
-const levelOptions = [
-  { label: '全部', value: 'debug' },
-  { label: 'INFO 及以上', value: 'info' },
-  { label: 'WARN 及以上', value: 'warn' },
+const levelOptions = computed(() => [
+  { label: t('logs.all'), value: 'debug' },
+  { label: t('logs.info'), value: 'info' },
+  { label: t('logs.warn'), value: 'warn' },
   { label: 'ERROR', value: 'error' },
-]
+])
 
 async function refresh() {
   try {
@@ -33,26 +34,26 @@ function levelType(l: string) {
   return 'info'
 }
 
-const columns: DataTableColumns<LogEntry> = [
+const columns = computed<DataTableColumns<LogEntry>>(() => [
   {
-    title: '时间',
+    title: t('logs.time'),
     key: 'time',
-    width: 180,
-    render: (row) => new Date(row.time).toLocaleString('zh-CN', { hour12: false }),
+    width: 190,
+    render: (row) => formatTime(row.time),
   },
   {
-    title: '级别',
+    title: t('logs.level'),
     key: 'level',
     width: 90,
     render: (row) => h(NTag, { size: 'small', type: levelType(row.level) }, { default: () => row.level }),
   },
-  { title: '消息', key: 'msg' },
+  { title: t('logs.msg'), key: 'msg' },
   {
-    title: '字段',
+    title: t('logs.attrs'),
     key: 'attrs',
     render: (row) => h(NText, { depth: 3, style: 'font-family: monospace; font-size: 12px' }, { default: () => row.attrs ?? '' }),
   },
-]
+])
 
 onMounted(() => {
   refresh()
@@ -67,7 +68,7 @@ onUnmounted(() => {
   <NSpace align="center" style="margin-bottom: 12px">
     <NSelect v-model:value="level" :options="levelOptions" style="width: 160px" @update:value="refresh" />
     <NSwitch v-model:value="autoRefresh" />
-    <NText depth="3">自动刷新</NText>
+    <NText depth="3">{{ t('logs.autoRefresh') }}</NText>
   </NSpace>
   <NDataTable :columns="columns" :data="entries" :bordered="false" size="small" :max-height="'calc(100vh - 180px)'" />
 </template>

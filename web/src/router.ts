@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { watch } from 'vue'
 import Overview from './pages/Overview.vue'
 import Tailscale from './pages/Tailscale.vue'
 import Bridges from './pages/Bridges.vue'
@@ -8,18 +9,19 @@ import TerminalPage from './pages/Terminal.vue'
 import Logs from './pages/Logs.vue'
 import Deploy from './pages/Deploy.vue'
 import Settings from './pages/Settings.vue'
-import Placeholder from './pages/Placeholder.vue'
+import { locale, t } from './i18n'
+import type { MessageKey } from './i18n'
 
-// 页面清单对应方案文档 4.3 节。未实现的页面用占位页标明期数。
+// 页面清单对应方案文档 4.3 节。
 export const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'overview', component: Overview, meta: { title: '概览' } },
-  { path: '/tailscale', name: 'tailscale', component: Tailscale, meta: { title: 'Tailscale' } },
-  { path: '/bridges', name: 'bridges', component: Bridges, meta: { title: '串口桥接' } },
-  { path: '/routes', name: 'routes', component: Routes, meta: { title: '子网路由' } },
-  { path: '/terminal', name: 'terminal', component: TerminalPage, meta: { title: '终端' } },
-  { path: '/logs', name: 'logs', component: Logs, meta: { title: '日志' } },
-  { path: '/deploy', name: 'deploy', component: Deploy, meta: { title: '部署' } },
-  { path: '/settings', name: 'settings', component: Settings, meta: { title: '设置' } },
+  { path: '/', name: 'overview', component: Overview, meta: { titleKey: 'nav.overview' } },
+  { path: '/tailscale', name: 'tailscale', component: Tailscale, meta: { titleKey: 'nav.tailscale' } },
+  { path: '/bridges', name: 'bridges', component: Bridges, meta: { titleKey: 'nav.bridges' } },
+  { path: '/routes', name: 'routes', component: Routes, meta: { titleKey: 'nav.routes' } },
+  { path: '/terminal', name: 'terminal', component: TerminalPage, meta: { titleKey: 'nav.terminal' } },
+  { path: '/logs', name: 'logs', component: Logs, meta: { titleKey: 'nav.logs' } },
+  { path: '/deploy', name: 'deploy', component: Deploy, meta: { titleKey: 'nav.deploy' } },
+  { path: '/settings', name: 'settings', component: Settings, meta: { titleKey: 'nav.settings' } },
 ]
 
 export const router = createRouter({
@@ -27,7 +29,15 @@ export const router = createRouter({
   routes,
 })
 
-router.afterEach((to) => {
-  const title = (to.meta.title as string | undefined) ?? ''
+/** 路由的页面标题，随语言切换。 */
+export function routeTitle(meta: Record<string | number | symbol, unknown>): string {
+  const k = meta.titleKey as MessageKey | undefined
+  return k ? t(k) : ''
+}
+
+function updateDocTitle() {
+  const title = routeTitle(router.currentRoute.value.meta)
   document.title = title ? `${title} · rsagent` : 'rsagent'
-})
+}
+router.afterEach(updateDocTitle)
+watch(locale, updateDocTitle)
