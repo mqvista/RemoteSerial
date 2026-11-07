@@ -38,14 +38,17 @@ linux-arm64:
 linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-linux-amd64 ./cmd/rsagent
 
-# macOS 需要 CGO：go.bug.st/serial 的串口枚举调用 IOKit，只能在 macOS 主机上编译
+# macOS 需要 CGO：go.bug.st/serial 的串口枚举调用 IOKit，只能在 macOS 主机上编译。
+# 必须显式指定最低系统版本，否则 clang 默认用编译机的系统版本，旧系统会提示“无法在此版本的 macOS 上使用”。
+# 与 deploy/macos/Info.plist 的 LSMinimumSystemVersion 保持一致；Go 1.27 本身最低支持 macOS 13。
+MACOS_MIN := 13.0
 darwin: darwin-arm64 darwin-amd64
 
 darwin-arm64:
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 CGO_CFLAGS="-arch arm64" CGO_LDFLAGS="-arch arm64" go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-darwin-arm64 ./cmd/rsagent
+	MACOSX_DEPLOYMENT_TARGET=$(MACOS_MIN) CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 CGO_CFLAGS="-arch arm64 -mmacosx-version-min=$(MACOS_MIN)" CGO_LDFLAGS="-arch arm64 -mmacosx-version-min=$(MACOS_MIN)" go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-darwin-arm64 ./cmd/rsagent
 
 darwin-amd64:
-	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CGO_CFLAGS="-arch x86_64" CGO_LDFLAGS="-arch x86_64" go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-darwin-amd64 ./cmd/rsagent
+	MACOSX_DEPLOYMENT_TARGET=$(MACOS_MIN) CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CGO_CFLAGS="-arch x86_64 -mmacosx-version-min=$(MACOS_MIN)" CGO_LDFLAGS="-arch x86_64 -mmacosx-version-min=$(MACOS_MIN)" go build -trimpath -ldflags "$(LDFLAGS)" -o dist/rsagent-darwin-amd64 ./cmd/rsagent
 
 # macOS .app 包（arm64 + x86_64 通用二进制，ad-hoc 签名）：make macapp VERSION=0.4.0
 # 产物 dist/RemoteSerial Agent.app 以及 dist/rsagent-macos.zip

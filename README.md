@@ -60,7 +60,7 @@ make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agen
 make dmg VERSION=0.4.0               # 另外生成拖放安装用的 dist/rsagent-macos.dmg（zip 仍用于自更新）
 ```
 
-macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。
+macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。需要 macOS 13 Ventura 或更新版本（Go 1.27 的最低要求；`make darwin` 用 `MACOS_MIN` 指定，不要依赖编译机的系统版本）。
 
 macOS 的系统服务注册为 launchd 守护进程（`/Library/LaunchDaemons/RemoteSerialAgent.plist`），开机即运行但以数据目录属主（安装者本人）身份执行，日志写到数据目录的 `logs/`。安装、启停、卸载需要管理员权限，部署页会弹出系统的管理员授权框；core 以服务运行时，这些操作需在本机的 RemoteSerial Agent 窗口中进行（服务进程本身弹不出授权框）。自更新下载 `rsagent-macos.zip` 并替换整个 `.app`，服务使用的程序副本一并替换后原地重启。
 
