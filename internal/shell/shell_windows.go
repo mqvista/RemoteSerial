@@ -99,6 +99,7 @@ func (s *Shell) Quit() {
 // Run 必须在主 goroutine 调用，阻塞到退出。
 func (s *Shell) Run(ctx context.Context) error {
 	runtime.LockOSThread()
+	enableDPIAwareness()
 	baseURL := "http://" + s.o.Listen + "/"
 	i18n.OnChange(func(i18n.Lang) {
 		s.applyTrayLabels()
@@ -152,9 +153,10 @@ func (s *Shell) showWindow(url string) {
 			DataPath:  dataPath,
 			AutoFocus: true,
 			WindowOptions: webview2.WindowOptions{
-				Title:  i18n.T("rsagent 远程串口"),
-				Width:  1100,
-				Height: 720,
+				Title: i18n.T("rsagent 远程串口"),
+				// 声明 DPI 感知后尺寸按物理像素计，换算后与 100% 缩放下观感一致
+				Width:  scaled(1100),
+				Height: scaled(720),
 				Center: true,
 			},
 		})

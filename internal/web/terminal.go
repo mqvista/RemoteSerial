@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	"rsagent/internal/i18n"
@@ -13,10 +14,27 @@ import (
 )
 
 // 网页终端协议（/ws/term/{id}?mode=rw|ro）：
-//   - 服务端 → 客户端：二进制帧是串口输出；文本帧是 JSON 状态 {"type":"status",...}
+//   - 服务端 → 客户端：二进制帧是一条或多条流量记录，每条为
+//     方向(1 字节：0 RX 设备输出，1 TX TCP 客户端写入，2 TX 网页终端写入)
+//     + 时间(8 字节，Unix 微秒，大端) + 长度(4 字节，大端) + 数据；
+//     文本帧是 JSON 状态 {"type":"status",...}
 //   - 客户端 → 服务端：二进制帧写入串口（rw 模式）；文本帧是控制命令
 //     {"type":"break"} {"type":"dtr","on":true} {"type":"rts","on":false}
-// 连接建立时先发最近 64KB 的输出作为回显。
+// 连接建立时先发最近约 64KB 的双向历史。
+
+const termRecordHeader = 13
+
+// appendRecord 把一块流量编码进终端帧。
+func appendRecord(dst []byte, c bridge.Chunk) []byte {
+	var h [termRecordHeader]byte
+	h[0] = byte(c.Dir)
+	binary.BigEndian.PutUint64(h[1:9], uint64(c.Time.UnixMicro()))
+	binary.BigEndian.PutUint32(h[9:13], uint32(len(c.Data)))
+	return append(append(dst, h[:]...), c.Data...)
+}
+
+// termFrameLimit 是合并多条记录时单帧的大致上限。
+const termFrameLimit = 32 << 10
 
 type termControl struct {
 	Type string `json:"type"`
@@ -64,7 +82,7 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	s.deps.Log.Info(i18n.T("网页终端已连接"), "bridge", id, "rw", rw, "by", who)
 	defer s.deps.Log.Info(i18n.T("网页终端已断开"), "bridge", id, "by", who)
 
-	out, unsub := b.Subscribe()
+	hist, out, unsub := b.Subscribe()
 	defer unsub()
 
 	writeBin := func(p []byte) error {
@@ -92,8 +110,18 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	if err := sendStatus(&last); err != nil {
 		return
 	}
-	if recent := b.Recent(); len(recent) > 0 {
-		if err := writeBin(recent); err != nil {
+	var frame []byte
+	for _, c := range hist {
+		frame = appendRecord(frame, c)
+		if len(frame) >= termFrameLimit {
+			if err := writeBin(frame); err != nil {
+				return
+			}
+			frame = frame[:0]
+		}
+	}
+	if len(frame) > 0 {
+		if err := writeBin(frame); err != nil {
 			return
 		}
 	}
@@ -142,21 +170,18 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case data := <-out:
-			// 合并短时间内到达的多个块，减少帧数
-			batch := data
-			for drained := false; !drained; {
+		case c := <-out:
+			// 合并已经到达的多条记录，减少帧数；每条仍保留自己的方向与时间
+			frame := appendRecord(nil, c)
+			for drained := false; !drained && len(frame) < termFrameLimit; {
 				select {
 				case more := <-out:
-					batch = append(batch, more...)
-					if len(batch) > 32<<10 {
-						drained = true
-					}
+					frame = appendRecord(frame, more)
 				default:
 					drained = true
 				}
 			}
-			if err := writeBin(batch); err != nil {
+			if err := writeBin(frame); err != nil {
 				return
 			}
 		case <-ticker.C:
@@ -166,5 +191,3 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-var _ = bridge.StateConnected

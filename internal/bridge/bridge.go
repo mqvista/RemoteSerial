@@ -1,8 +1,8 @@
 // Package bridge 把串口桥接到 TCP。每个桥接独占一个串口和一个 TCP 端口。
 //
 // 运行模型：串口在桥接启用期间始终保持打开（设备拔出时等待重插），
-// TCP 监听始终存在，同一时刻只允许一个客户端。串口数据同时写入最近输出环
-// 和所有订阅者（网页终端），供回显与旁观。
+// TCP 监听始终存在，同一时刻只允许一个客户端。双向流量带时间戳记入最近历史
+// 并分发给订阅者（网页终端），供回显与监看。
 package bridge
 
 import (
@@ -71,7 +71,6 @@ const (
 	deviceRetryInterval = 3 * time.Second
 	listenRetryInterval = 5 * time.Second
 	keepAlivePeriod     = 10 * time.Second
-	recentBufferSize    = 64 << 10
 	subscriberBuffer    = 256
 )
 
@@ -98,12 +97,11 @@ type Bridge struct {
 	clientCancel context.CancelFunc
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
-	subs         map[chan []byte]struct{}
 	cap          *capture
 
 	fromDevice atomic.Int64
 	toDevice   atomic.Int64
-	recent     *recentRing
+	tap        *tap
 }
 
 func newBridge(cfg config.Bridge, log *slog.Logger, whois WhoIsFunc, onChange func()) *Bridge {
@@ -113,8 +111,7 @@ func newBridge(cfg config.Bridge, log *slog.Logger, whois WhoIsFunc, onChange fu
 		whois:    whois,
 		onChg:    onChange,
 		state:    StateDisabled,
-		recent:   newRecentRing(recentBufferSize),
-		subs:     map[chan []byte]struct{}{},
+		tap:      newTap(),
 		active:   configMode(cfg),
 		paramsBy: "config",
 		dtr:      true,
@@ -137,6 +134,7 @@ func configMode(cfg config.Bridge) rfc2217.Mode {
 // Status 返回状态快照。
 func (b *Bridge) Status() Status {
 	capSt := b.Capture()
+	viewers := b.tap.count()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return Status{
@@ -160,25 +158,18 @@ func (b *Bridge) Status() Status {
 		ClientSince:  b.clientSince,
 		FromDevice:   b.fromDevice.Load(),
 		ToDevice:     b.toDevice.Load(),
-		Viewers:      len(b.subs),
+		Viewers:      viewers,
 		LastError:    i18n.String(b.lastErr),
 	}
 }
 
-// Recent 返回最近的串口输出。
-func (b *Bridge) Recent() []byte { return b.recent.Bytes() }
-
-// Subscribe 订阅串口输出，用于网页终端。慢消费者会丢数据而不是阻塞串口读取。
-func (b *Bridge) Subscribe() (<-chan []byte, func()) {
-	ch := make(chan []byte, subscriberBuffer)
-	b.mu.Lock()
-	b.subs[ch] = struct{}{}
-	b.mu.Unlock()
+// Subscribe 订阅双向流量，用于网页终端：返回最近的历史与之后的实时数据。
+// 慢消费者会丢数据而不是阻塞串口读写。
+func (b *Bridge) Subscribe() ([]Chunk, <-chan Chunk, func()) {
+	hist, ch := b.tap.subscribe()
 	b.notify()
-	return ch, func() {
-		b.mu.Lock()
-		delete(b.subs, ch)
-		b.mu.Unlock()
+	return hist, ch, func() {
+		b.tap.unsubscribe(ch)
 		b.notify()
 	}
 }
@@ -195,6 +186,7 @@ func (b *Bridge) WriteDevice(p []byte) error {
 	b.toDevice.Add(int64(n))
 	if n > 0 {
 		b.captureTx(p[:n])
+		b.tap.publish(DirTXWeb, p[:n])
 	}
 	return err
 }
@@ -372,7 +364,7 @@ func (b *Bridge) activeMode() rfc2217.Mode {
 	return b.active
 }
 
-// readPort 把串口数据转发给客户端、订阅者和最近输出环，直到出错或被关闭。
+// readPort 把串口数据转发给客户端，并记入流量历史，直到出错或被关闭。
 func (b *Bridge) readPort(ctx context.Context) {
 	b.mu.Lock()
 	p := b.port
@@ -386,24 +378,11 @@ func (b *Bridge) readPort(ctx context.Context) {
 		if n > 0 {
 			data := buf[:n]
 			b.fromDevice.Add(int64(n))
-			b.recent.Write(data)
 			b.captureRx(data)
+			b.tap.publish(DirRX, data)
 			b.mu.Lock()
 			c := b.client
-			var subs []chan []byte
-			for ch := range b.subs {
-				subs = append(subs, ch)
-			}
 			b.mu.Unlock()
-			if len(subs) > 0 {
-				cp := append([]byte(nil), data...)
-				for _, ch := range subs {
-					select {
-					case ch <- cp:
-					default:
-					}
-				}
-			}
 			if c != nil {
 				if _, werr := c.Write(data); werr != nil {
 					b.dropClient(i18n.Sprintf("写入客户端失败: %v", werr))
@@ -705,6 +684,7 @@ func (b *Bridge) serveClient(ctx context.Context, client io.ReadWriteCloser, nc 
 					b.log.Debug(i18n.T("写入串口失败"), "err", werr)
 				} else if wn > 0 {
 					b.captureTx(buf[:wn])
+					b.tap.publish(DirTX, buf[:wn])
 				}
 			}
 		}
