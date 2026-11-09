@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -245,4 +246,46 @@ func EnsureFirewall(ctx context.Context, out io.Writer) error {
 
 func step(out io.Writer, msg string) {
 	fmt.Fprintf(out, "==> %s\n", msg)
+}
+
+// consoleRule 是放行局域网访问 rsagent 管理界面的防火墙规则（uci 段名）。
+const consoleRule = "rsagent_console"
+
+// ConsoleFirewallCommands 返回同步管理界面防火墙规则的命令：允许局域网访问时放行 lan 区域到该端口，
+// 否则删除规则。多数 OpenWrt 的 lan 区域本来就放行入站，规则主要是给收紧了 lan 区域的路由器用。
+func ConsoleFirewallCommands(port int, lan bool) [][]string {
+	r := "firewall." + consoleRule
+	if !lan {
+		return [][]string{{"uci", "-q", "delete", r}, {"uci", "commit", "firewall"}, {"/etc/init.d/firewall", "reload"}}
+	}
+	return [][]string{
+		{"uci", "set", r + "=rule"},
+		{"uci", "set", r + ".name=Allow-rsagent-console"},
+		{"uci", "set", r + ".src=lan"},
+		{"uci", "set", r + ".proto=tcp"},
+		{"uci", "set", r + ".dest_port=" + strconv.Itoa(port)},
+		{"uci", "set", r + ".target=ACCEPT"},
+		{"uci", "commit", "firewall"},
+		{"/etc/init.d/firewall", "reload"},
+	}
+}
+
+// SyncConsoleFirewall 按当前设置写入或删除管理界面的防火墙规则，规则已经一致时不动防火墙。
+// 不是 OpenWrt 或不是 root 时什么都不做。
+func SyncConsoleFirewall(ctx context.Context, port int, lan bool) error {
+	if !platform.OpenWrt() || os.Geteuid() != 0 {
+		return nil
+	}
+	cur, _ := output(ctx, "uci", "-q", "get", "firewall."+consoleRule+".dest_port")
+	cur = strings.TrimSpace(cur)
+	if (lan && cur == strconv.Itoa(port)) || (!lan && cur == "") {
+		return nil
+	}
+	for _, c := range ConsoleFirewallCommands(port, lan) {
+		// 删除不存在的规则会失败，忽略
+		if err := Runner(ctx, io.Discard, c[0], c[1:]...); err != nil && c[1] != "-q" {
+			return i18n.Errorf("配置防火墙失败（%s）: %w", strings.Join(c, " "), err)
+		}
+	}
+	return nil
 }

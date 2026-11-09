@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
+	"strconv"
 	"strings"
 
 	"rsagent/internal/platform"
@@ -89,9 +90,31 @@ func DefaultWebPort() int {
 	return 80
 }
 
-// Access 是 tailnet 侧访问控制。
+// Access 是管理界面的访问控制。
 type Access struct {
 	AllowedLogins []string `json:"allowedLogins"` // 允许访问管理界面的 tailnet 登录名，空表示全部放行但界面告警
+	// LAN 为 true 时本机管理界面监听所有地址，局域网可以访问（需登录：LuCI 一次性令牌或密码）。
+	LAN bool `json:"lan,omitempty"`
+	// PasswordHash 是局域网登录密码的 bcrypt 哈希，空表示未设置。GET /api/settings 不返回它。
+	PasswordHash string `json:"passwordHash,omitempty"`
+}
+
+// ConsolePort 返回本机管理界面的端口。
+func (c *Config) ConsolePort() int {
+	_, p, err := net.SplitHostPort(c.Listen)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(p)
+	return n
+}
+
+// ConsoleBind 返回本机管理界面实际要绑定的地址：允许局域网访问时绑定所有地址。
+func (c *Config) ConsoleBind() string {
+	if c.Access.LAN {
+		return net.JoinHostPort("", strconv.Itoa(c.ConsolePort()))
+	}
+	return c.Listen
 }
 
 // Bridge 是一个串口到 TCP 的桥接定义。

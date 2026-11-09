@@ -17,10 +17,20 @@ func IdentityOf(r *http.Request) *tsnode.Identity {
 	return id
 }
 
-// authMiddleware 对 tailnet 来源做 WhoIs 校验与白名单检查，本机来源直接放行。
+// authMiddleware 对 tailnet 来源做 WhoIs 校验与白名单检查，局域网来源要求登录，本机来源直接放行。
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if SourceOf(r) == SourceLAN {
+			if s.lanGate(w, r) {
+				next.ServeHTTP(w, r)
+			}
+			return
+		}
 		if SourceOf(r) != SourceTailnet {
+			// 本机来源也处理 LuCI 跳转带来的令牌，去掉地址里的令牌
+			if s.redeemFromQuery(w, r) {
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

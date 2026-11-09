@@ -205,6 +205,9 @@ func requesterLabel(r *http.Request) string {
 	if id := IdentityOf(r); id != nil {
 		return id.LoginName + "@" + id.Node
 	}
+	if SourceOf(r) == SourceLAN {
+		return "lan:" + remoteIP(r).String()
+	}
 	return "local"
 }
 

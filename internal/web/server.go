@@ -29,6 +29,8 @@ const (
 	SourceLocal Source = "local"
 	// SourceTailnet 来自 tsnet 监听。
 	SourceTailnet Source = "tailnet"
+	// SourceLAN 是本机监听收到的非回环请求（允许局域网访问时），需要登录。
+	SourceLAN Source = "lan"
 )
 
 type ctxKey int
@@ -60,6 +62,13 @@ type Deps struct {
 	Quit        func() // 退出本进程，供本机 POST /api/ui/quit 使用
 	StartedAt   time.Time
 	Mode        string // standalone | service | shell
+	// Console 在运行中切换本机管理界面的端口与局域网访问；空表示不支持（需重启生效）。
+	Console ConsoleControl
+}
+
+// ConsoleControl 由 app 实现：按新的配置重新监听本机与 tailnet 侧管理界面，失败时保持原样。
+type ConsoleControl interface {
+	Apply(bind string, webPort int) error
 }
 
 // Server 是 HTTP 管理界面。
@@ -70,6 +79,8 @@ type Server struct {
 
 	sysMu  sync.Mutex
 	sysJob *sysJob // 最近一次系统 tailscale 操作
+
+	sess *sessions
 }
 
 // New 构造 Server 并注册路由。
@@ -77,7 +88,7 @@ func New(d Deps) *Server {
 	if d.Hub == nil {
 		d.Hub = NewHub()
 	}
-	s := &Server{deps: d, mux: http.NewServeMux(), hub: d.Hub}
+	s := &Server{deps: d, mux: http.NewServeMux(), hub: d.Hub, sess: newSessions()}
 	s.routes()
 	return s
 }
@@ -85,9 +96,13 @@ func New(d Deps) *Server {
 // Notify 触发一次状态推送。
 func (s *Server) Notify() { s.hub.Notify() }
 
-// Handler 返回带来源标记的根 handler。
+// Handler 返回带来源标记的根 handler。本机监听（SourceLocal）按对方地址再细分为本机、tailnet 与局域网。
 func (s *Server) Handler(src Source) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		src := src
+		if src == SourceLocal {
+			src = s.classify(r)
+		}
 		ctx := context.WithValue(r.Context(), sourceKey, src)
 		s.mux.ServeHTTP(w, r.WithContext(ctx))
 	})

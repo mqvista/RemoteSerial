@@ -7,7 +7,7 @@ LDFLAGS := -s -w \
 	-X rsagent/internal/buildinfo.Commit=$(COMMIT) \
 	-X rsagent/internal/buildinfo.Date=$(DATE)
 
-.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt manifest run test clean
+.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt luci luci-pot manifest run test clean
 
 all: web windows linux-arm64
 
@@ -20,17 +20,34 @@ deb: linux-$(ARCH)
 
 # 自更新清单与校验和：make manifest VERSION=0.4.0 [BASE_URL=https://...]
 BASE_URL ?= https://github.com/mqvista/RemoteSerial/releases/download/v$(VERSION)
-# OpenWrt 离线安装包：与 Linux 同一个程序，加上安装脚本。解压后执行 sh rsagent-openwrt/install.sh。
+# LuCI 页面（luci-app-rsagent）的文件树，按安装后的路径排好，与架构无关：
+# htdocs → /www，root → /，翻译编译成 /usr/lib/lua/luci/i18n/rsagent.<lang>.lmo。
+LUCI := openwrt/luci-app-rsagent
+luci:
+	rm -rf build/luci && mkdir -p build/luci/www build/luci/usr/lib/lua/luci/i18n
+	cp -R $(LUCI)/htdocs/. build/luci/www/
+	cp -R $(LUCI)/root/. build/luci/
+	go run ./tools/luci-i18n lmo $(LUCI)/po/zh_Hant/rsagent.po build/luci/usr/lib/lua/luci/i18n/rsagent.zh-tw.lmo
+	COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname root -C build -czf dist/luci-app-rsagent.tar.gz luci
+	@echo dist/luci-app-rsagent.tar.gz
+
+# 修改页面文字后重新生成翻译模板，再把新条目补进 po/zh_Hant/rsagent.po
+luci-pot:
+	go run ./tools/luci-i18n pot $(LUCI)/po/templates/rsagent.pot $(LUCI)/root/usr/share/luci/menu.d/luci-app-rsagent.json $(LUCI)/htdocs/luci-static/resources/view/rsagent/overview.js
+
+# OpenWrt 离线安装包：与 Linux 同一个程序，加上安装脚本与 LuCI 页面。解压后执行 sh rsagent-openwrt/install.sh。
 # 目录名不用 rsagent：常有人解压到 /tmp，会与运行时目录 /tmp/rsagent 混在一起。
-openwrt: linux-amd64 linux-arm64
+openwrt: linux-amd64 linux-arm64 luci
 	@for a in amd64 arm64; do \
 		rm -rf build/openwrt-$$a && mkdir -p build/openwrt-$$a/rsagent-openwrt && \
 		cp dist/rsagent-linux-$$a build/openwrt-$$a/rsagent-openwrt/rsagent && \
 		cp deploy/install.sh build/openwrt-$$a/rsagent-openwrt/install.sh && \
+		cp -R build/luci build/openwrt-$$a/rsagent-openwrt/luci && \
 		chmod 755 build/openwrt-$$a/rsagent-openwrt/rsagent build/openwrt-$$a/rsagent-openwrt/install.sh && \
-		COPYFILE_DISABLE=1 tar -C build/openwrt-$$a -czf dist/rsagent-openwrt-$$a.tar.gz rsagent-openwrt && \
+		COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname root -C build/openwrt-$$a -czf dist/rsagent-openwrt-$$a.tar.gz rsagent-openwrt && \
 		rm -rf build/openwrt-$$a && echo "dist/rsagent-openwrt-$$a.tar.gz"; \
 	done
+	rm -rf build/luci
 
 manifest:
 	go run ./tools/mkmanifest -version $(VERSION) -dir dist -base $(BASE_URL)

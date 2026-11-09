@@ -3,8 +3,6 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net"
 	"os"
 	"rsagent/internal/i18n"
@@ -104,25 +102,19 @@ func Run(ctx context.Context, o Options) error {
 		return id.Node
 	}, hub.Notify)
 
+	con := &consoleNet{ctx: ctx, log: lg.Logger, webPort: cfg.Tailscale.WebPort}
 	node = tsnode.New(nodeConfig(cfg, paths), lg.Logger.With("mod", "tsnode"), tsnode.Hooks{
 		OnStarted: func(n *tsnode.Node) {
-			addr := fmt.Sprintf(":%d", cfg.Tailscale.WebPort)
-			ln, err := n.Listen("tcp", addr)
-			if err != nil {
-				lg.Error(i18n.T("tailnet 管理界面监听失败"), "addr", addr, "err", err)
-				return
-			}
-			lg.Info(i18n.T("tailnet 管理界面已监听"), "port", cfg.Tailscale.WebPort)
-			go func() {
-				if err := srv.Serve(ctx, ln, web.SourceTailnet); err != nil && !errors.Is(err, net.ErrClosed) {
-					lg.Debug(i18n.T("tailnet 管理界面监听结束"), "err", err)
-				}
-			}()
+			con.nodeStarted()
 			bridges.SetListener(n.Listen)
 		},
-		OnStopped: func() { bridges.ClearListener() },
-		OnChange:  func(tsnode.Snapshot) { hub.Notify() },
+		OnStopped: func() {
+			con.nodeStopped()
+			bridges.ClearListener()
+		},
+		OnChange: func(tsnode.Snapshot) { hub.Notify() },
 	})
+	con.node = node
 	bridges.Apply(cfg.Bridges)
 
 	upd := update.New(update.Options{
@@ -151,7 +143,9 @@ func Run(ctx context.Context, o Options) error {
 		Quit:        o.Quit,
 		StartedAt:   time.Now(),
 		Mode:        o.Mode,
+		Console:     con,
 	})
+	con.srv = srv
 
 	if node.HasState() {
 		lg.Info(i18n.T("发现已保存的节点状态，自动上线"))
@@ -175,14 +169,15 @@ func Run(ctx context.Context, o Options) error {
 	}
 
 	// 服务模式启动时，前一个实例可能还占着端口（例如刚从单进程切换过来），重试 30 秒。
+	bind := cfg.ConsoleBind()
 	var ln net.Listener
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		ln, err = net.Listen("tcp", cfg.Listen)
+		ln, err = net.Listen("tcp", bind)
 		if err == nil || time.Now().After(deadline) || ctx.Err() != nil {
 			break
 		}
-		lg.Warn(i18n.T("本机管理界面端口被占用，稍后重试"), "addr", cfg.Listen, "err", err)
+		lg.Warn(i18n.T("本机管理界面端口被占用，稍后重试"), "addr", bind, "err", err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(2 * time.Second):
@@ -191,17 +186,15 @@ func Run(ctx context.Context, o Options) error {
 	if err != nil {
 		bridges.StopAll()
 		_ = node.Stop()
-		return i18n.Errorf("监听 %s: %w", cfg.Listen, err)
+		return i18n.Errorf("监听 %s: %w", bind, err)
 	}
-	lg.Info(i18n.T("本机管理界面已监听"), "url", "http://"+cfg.Listen+"/")
-	err = srv.Serve(ctx, ln, web.SourceLocal)
+	lg.Info(i18n.T("本机管理界面已监听"), "url", "http://"+cfg.Listen+"/", "lan", cfg.Access.LAN)
+	con.startLocal(ln, bind)
+	<-ctx.Done()
+	con.wait()
 	bridges.StopAll()
 	if stopErr := node.Stop(); stopErr != nil {
 		lg.Warn(i18n.T("停止节点"), "err", stopErr)
-	}
-	if err != nil {
-		lg.Error(i18n.T("管理界面退出"), "err", err)
-		return err
 	}
 	lg.Info(i18n.T("rsagent 退出"))
 	return nil

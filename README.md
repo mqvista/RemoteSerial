@@ -24,6 +24,7 @@ rsagent service      run | install | uninstall | start | stop | restart | status
 rsagent deploy       task-install 等部署动作，需要时以管理员身份调用
 rsagent provision    --auth-key <key> --tags tag:x [--hostname 名]  无人值守入网（支持 OAuth client secret）
 rsagent tailscale    status | install | start | firewall | backend <embedded|system>  系统 tailscale（OpenWrt）
+rsagent ctl          status | service | bridge | console | token | password | tailscale …  JSON 接口（LuCI 使用）
 rsagent update       [--check]  检查、下载并应用更新
 rsagent quit         让本机运行中的托盘实例退出
 rsagent version
@@ -33,7 +34,7 @@ rsagent version
 
 安装包 `rsagent-setup-<版本>.exe` 支持静默批量部署：`/VERYSILENT /AUTHKEY=tskey-client-… /TAGS=tag:serial-agent /HOSTNAME=rs-site1 /TASKS="autostart,firewall"`。Linux 用 `deploy/install.sh` 或 `.deb`。详见 `docs/使用说明.md` 第 9、10 节。
 
-OpenWrt（x86_64、aarch64，24.10 / 25.x）用同一个 Linux 程序，启动时识别 OpenWrt：默认使用系统自带的 tailscale 套件而不是内嵌节点，服务为 procd 的 `/etc/init.d/rsagent`，配置在 `/etc/rsagent`，日志在 `/tmp/rsagent`。安装与说明见 `docs/使用说明.md` 第 11 节，计划见 [docs/OpenWrt版本计划.md](docs/OpenWrt版本计划.md)。
+OpenWrt（x86_64、aarch64，24.10 / 25.x）用同一个 Linux 程序，启动时识别 OpenWrt：默认使用系统自带的 tailscale 套件而不是内嵌节点，服务为 procd 的 `/etc/init.d/rsagent`，配置在 `/etc/rsagent`，日志在 `/tmp/rsagent`；LuCI 中有“服务 → RemoteSerial”页面（`openwrt/luci-app-rsagent`），可一键进入管理界面。安装与说明见 `docs/使用说明.md` 第 11 节，计划见 [docs/OpenWrt版本计划.md](docs/OpenWrt版本计划.md)。
 
 数据目录默认 Windows 为 `%ProgramData%\RemoteSerial`，Linux root 为 `/var/lib/rsagent`，内含 `config.json`、`tsstate\`（节点私钥，勿外泄）、`logs\`。
 
@@ -61,7 +62,8 @@ make manifest VERSION=0.4.0
 make darwin                          # dist/rsagent-darwin-{arm64,amd64}
 make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agent.app 及 rsagent-macos.zip，ad-hoc 签名
 make dmg VERSION=0.4.0               # 另外生成拖放安装用的 dist/rsagent-macos.dmg（zip 仍用于自更新）
-make openwrt VERSION=0.4.0           # OpenWrt 离线安装包 dist/rsagent-openwrt-{amd64,arm64}.tar.gz
+make openwrt VERSION=0.4.0           # OpenWrt 离线安装包 dist/rsagent-openwrt-{amd64,arm64}.tar.gz（含 LuCI 页面）与 dist/luci-app-rsagent.tar.gz
+make luci-pot                        # 修改 LuCI 页面文字后重新生成翻译模板，再补 po/zh_Hant/rsagent.po
 ```
 
 macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。需要 macOS 13 Ventura 或更新版本（Go 1.27 的最低要求；`make darwin` 用 `MACOS_MIN` 指定，不要依赖编译机的系统版本）。
@@ -80,7 +82,7 @@ make deb VERSION=$V ARCH=arm64 && make deb VERSION=$V ARCH=amd64   # 需要 nfpm
 make dmg openwrt VERSION=$V
 rm -f dist/rsagent-darwin-*        # 裸程序不发布，macOS 自更新走 rsagent-macos.zip
 make manifest VERSION=$V
-gh release create v$V --verify-tag --generate-notes dist/rsagent-* dist/*.deb dist/manifest.json dist/SHA256SUMS
+gh release create v$V --verify-tag --generate-notes dist/rsagent-* dist/luci-app-rsagent.tar.gz dist/*.deb dist/manifest.json dist/SHA256SUMS
 ```
 
 `.github/workflows/release.yml` 只能在 Actions 页面手动触发，作为备用。程序内自更新默认读取最新 Release 的 `manifest.json`，仓库需为公开，或在设置中把清单地址改为自建服务器。
@@ -127,6 +129,8 @@ internal/systs     系统自带 tailscale 的检测、安装、启动与防火�
 internal/update    自更新：清单、下载校验、替换文件、重启
 tools/mkicon       图标生成
 tools/mkmanifest   发布清单与 SHA256SUMS 生成
+tools/luci-i18n    LuCI 翻译：提取模板、把 .po 编译成 .lmo（不需要 OpenWrt SDK）
+openwrt/           LuCI 页面 luci-app-rsagent（页面、菜单、ACL、rpcd 插件、翻译）
 installer/         Inno Setup 安装包脚本
 web/               Vue 3 + Vite 前端
 deploy/            ACL 模板、systemd 单元、install.sh、nfpm 打包配置

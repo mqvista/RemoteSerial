@@ -1,0 +1,15 @@
+{
+	"luci-app-rsagent": {
+		"description": "Grant access to RemoteSerial (rsagent)",
+		"read": {
+			"ubus": {
+				"luci.rsagent": [ "status", "tailscale_job" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.rsagent": [ "service", "bridge", "bridge_add", "bridge_remove", "console", "token", "tailscale", "tailscale_login", "tailscale_authkey" ]
+			}
+		}
+	}
+}

@@ -82,6 +82,8 @@ func main() {
 		err = cmdProvision(args[1:])
 	case "tailscale":
 		err = cmdTailscale(args[1:])
+	case "ctl":
+		cmdCtl(args[1:])
 	case "update":
 		err = cmdUpdate(args[1:])
 	case "quit":
@@ -114,6 +116,8 @@ Usage:
                                     Join the tailnet unattended; the key may also come from RSAGENT_AUTH_KEY
   rsagent tailscale <op> [options]  op: status | install | start | firewall | backend <embedded|system>
                                     Manage the system Tailscale (OpenWrt's tailscale package) used by rsagent
+  rsagent ctl <op> [args]           JSON interface for LuCI: status | service | bridge | console | token |
+                                    password | tailscale | tailscale-job | tailscale-login (run "rsagent ctl")
   rsagent update [options]          [--check] [--url manifest-url]  Check for, download and apply updates
   rsagent quit [options]            Ask the running tray instance on this machine to quit
   rsagent version                   Print the version

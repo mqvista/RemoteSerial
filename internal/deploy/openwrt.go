@@ -184,3 +184,6 @@ func withOutput(err error, out string) error {
 	}
 	return &outputError{err: err, out: out}
 }
+
+// OpenWrtServiceStatus 返回 procd 服务的状态，供 rsagent ctl 使用（服务停止时 API 不可用）。
+func OpenWrtServiceStatus() ServiceStatus { return openwrtServiceStatus(Options{}) }

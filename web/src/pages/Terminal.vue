@@ -393,7 +393,7 @@ onBeforeUnmount(() => {
         <NButton size="small" :type="paused ? 'warning' : 'default'" @click="paused = !paused">{{ paused ? t('term.resume') : t('term.pause') }}</NButton>
       </template>
       <span class="grow" />
-      <NButton size="small" :disabled="!connected" @click="sendControl({ type: 'break' })">Break</NButton>
+      <NButton size="small" :disabled="!connected" @click="sendControl({ type: 'break' })">{{ t('term.break') }}</NButton>
       <NButton size="small" :disabled="!connected" :type="termStatus?.dtr ? 'success' : 'default'" @click="sendControl({ type: 'dtr', on: !termStatus?.dtr })">DTR</NButton>
       <NButton size="small" :disabled="!connected" :type="termStatus?.rts ? 'success' : 'default'" @click="sendControl({ type: 'rts', on: !termStatus?.rts })">RTS</NButton>
       <NButton size="small" @click="clearScreen">{{ t('term.clear') }}</NButton>

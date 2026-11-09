@@ -285,7 +285,7 @@ onUnmounted(() => {
         <NDescriptionsItem label="MagicDNS">{{ snap?.dnsName || '-' }}</NDescriptionsItem>
         <NDescriptionsItem label="IPv4">{{ snap?.ip || '-' }}</NDescriptionsItem>
         <NDescriptionsItem label="IPv6">{{ snap?.ipv6 || '-' }}</NDescriptionsItem>
-        <NDescriptionsItem label="Tailnet">{{ snap?.tailnet || '-' }}</NDescriptionsItem>
+        <NDescriptionsItem :label="t('tsp.tailnetName')">{{ snap?.tailnet || '-' }}</NDescriptionsItem>
         <NDescriptionsItem :label="t('tsp.owner')">
           <template v-if="snap?.tags?.length">
             <NTag v-for="t in snap.tags" :key="t" size="small" style="margin-right: 4px">{{ t }}</NTag>
@@ -380,7 +380,7 @@ onUnmounted(() => {
         {{ t('tsp.loginHint2') }}
       </NAlert>
       <NForm label-placement="left" label-width="auto">
-        <NFormItem label="Auth key">
+        <NFormItem :label="t('common.authKey')">
           <NInput v-model:value="form.authKey" type="password" show-password-on="click" placeholder="tskey-auth-..." />
         </NFormItem>
         <NFormItem v-if="!isSystem" :label="t('tsp.hostname')">
@@ -389,7 +389,7 @@ onUnmounted(() => {
         <NFormItem :label="t('tsp.control')">
           <NInput v-model:value="form.controlURL" :placeholder="t('tsp.controlPh')" />
         </NFormItem>
-        <NFormItem label="Tag">
+        <NFormItem :label="t('common.tags')">
           <NInput v-model:value="form.tags" :placeholder="t('tsp.tagsPh')" />
         </NFormItem>
         <NFormItem v-if="snap?.hasState && !isSystem" label=" ">

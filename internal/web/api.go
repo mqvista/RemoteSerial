@@ -61,6 +61,14 @@ func (s *Server) routes() {
 	api.HandleFunc("GET /api/deploy/status", s.handleDeployStatus)
 	api.HandleFunc("POST /api/deploy/{action}", s.handleDeployAction)
 
+	api.HandleFunc("GET /api/session", s.handleSession)
+	api.HandleFunc("POST /api/session/login", s.handleSessionLogin)
+	api.HandleFunc("POST /api/session/logout", s.handleSessionLogout)
+	api.HandleFunc("POST /api/session/token", s.handleSessionToken)
+	api.HandleFunc("PUT /api/session/password", s.handleSessionPassword)
+	api.HandleFunc("GET /api/console", s.handleConsoleGet)
+	api.HandleFunc("PUT /api/console", s.handleConsolePut)
+
 	api.HandleFunc("GET /ws/events", s.handleEvents)
 	api.HandleFunc("GET /ws/term/{id}", s.handleTerminal)
 
@@ -182,8 +190,10 @@ func (s *Server) handleUIShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, _ *http.Request) {
-	// 配置里没有密钥，可以整体返回。auth key 不落盘。
-	writeJSON(w, http.StatusOK, s.deps.Config)
+	// 配置里只有局域网密码的哈希算敏感项，去掉后整体返回。auth key 不落盘。
+	c := *s.deps.Config
+	c.Access.PasswordHash = ""
+	writeJSON(w, http.StatusOK, &c)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

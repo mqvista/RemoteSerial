@@ -1,0 +1,296 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "RemoteSerial"
+msgstr ""
+
+msgid "Error"
+msgstr ""
+
+msgid "Connected"
+msgstr ""
+
+msgid "Needs login"
+msgstr ""
+
+msgid "Waiting for approval"
+msgstr ""
+
+msgid "Starting"
+msgstr ""
+
+msgid "Stopped"
+msgstr ""
+
+msgid "Not installed"
+msgstr ""
+
+msgid "Not running"
+msgstr ""
+
+msgid "Not logged in"
+msgstr ""
+
+msgid "Disabled"
+msgstr ""
+
+msgid "Client connected"
+msgstr ""
+
+msgid "Waiting for client"
+msgstr ""
+
+msgid "Waiting for network"
+msgstr ""
+
+msgid "Waiting for device"
+msgstr ""
+
+msgid "RemoteSerial uses the router's own Tailscale (the \"tailscale\" package), which is not installed yet."
+msgstr ""
+
+msgid "Install Tailscale"
+msgstr ""
+
+msgid "Or run on the router:"
+msgstr ""
+
+msgid "Only %d MB free on the overlay; about %d MB is needed."
+msgstr ""
+
+msgid "Tailscale is installed but not running."
+msgstr ""
+
+msgid "Start Tailscale and enable at boot"
+msgstr ""
+
+msgid "Tailscale is running but this router is not logged in to a tailnet yet."
+msgstr ""
+
+msgid "Open this link to log in:"
+msgstr ""
+
+msgid "Log in in browser"
+msgstr ""
+
+msgid "Logged in. An admin must approve this device in the Tailscale admin console."
+msgstr ""
+
+msgid "Tailscale is not ready."
+msgstr ""
+
+msgid "Set up Tailscale"
+msgstr ""
+
+msgid "Or log in with an auth key:"
+msgstr ""
+
+msgid "Auth key"
+msgstr ""
+
+msgid "An auth key (tskey-auth-…) or an OAuth client secret (tskey-client-…) from the Tailscale admin console. It is used once and not stored."
+msgstr ""
+
+msgid "Tags"
+msgstr ""
+
+msgid "Comma separated, e.g. tag:serial-agent. Required for an OAuth client secret; leave empty for a personal auth key."
+msgstr ""
+
+msgid "Log in with auth key"
+msgstr ""
+
+msgid "Enter an auth key first."
+msgstr ""
+
+msgid "An OAuth client secret needs at least one tag, e.g. tag:serial-agent."
+msgstr ""
+
+msgid "Logging in… the state updates in a few seconds."
+msgstr ""
+
+msgid "Stop"
+msgstr ""
+
+msgid "Restart"
+msgstr ""
+
+msgid "Start"
+msgstr ""
+
+msgid "Disable start at boot"
+msgstr ""
+
+msgid "Enable start at boot"
+msgstr ""
+
+msgid "Running"
+msgstr ""
+
+msgid "starts at boot"
+msgstr ""
+
+msgid "does not start at boot"
+msgstr ""
+
+msgid "(built-in Tailscale)"
+msgstr ""
+
+msgid "Service"
+msgstr ""
+
+msgid "Version"
+msgstr ""
+
+msgid "Tailscale"
+msgstr ""
+
+msgid "Console"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Start the service to open the console."
+msgstr ""
+
+msgid "Open console"
+msgstr ""
+
+msgid "port %d"
+msgstr ""
+
+msgid "Turn on \"Allow LAN access\" below to open the console from this browser."
+msgstr ""
+
+msgid "From the tailnet:"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "Serial port"
+msgstr ""
+
+msgid "TCP port"
+msgstr ""
+
+msgid "State"
+msgstr ""
+
+msgid "Client"
+msgstr ""
+
+msgid "Serial → TCP / TCP → serial"
+msgstr ""
+
+msgid "Disable"
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "No bridges yet. Add one from a serial device below."
+msgstr ""
+
+msgid "Bridges"
+msgstr ""
+
+msgid "Delete bridge \"%s\"? Its TCP port %d stops listening."
+msgstr ""
+
+msgid "Device"
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "USB ID"
+msgstr ""
+
+msgid "Serial number"
+msgstr ""
+
+msgid "Used by"
+msgstr ""
+
+msgid "USB serial"
+msgstr ""
+
+msgid "Built-in"
+msgstr ""
+
+msgid "Add bridge"
+msgstr ""
+
+msgid "No serial devices found. Plug in a USB serial adapter; it needs a driver such as kmod-usb-serial-ch341, -cp210x, -ftdi, -pl2303 or kmod-usb-acm."
+msgstr ""
+
+msgid "Serial devices"
+msgstr ""
+
+msgid "RFC2217 (client can change baud rate, recommended)"
+msgstr ""
+
+msgid "Raw TCP (fixed parameters)"
+msgstr ""
+
+msgid "Add bridge for %s"
+msgstr ""
+
+msgid "Baud rate"
+msgstr ""
+
+msgid "Mode"
+msgstr ""
+
+msgid "Clients connect to this port on the router's Tailscale IP."
+msgstr ""
+
+msgid "Match by USB ID"
+msgstr ""
+
+msgid "Find the adapter by its USB ID and serial number, so the bridge keeps working when the device name changes (e.g. ttyUSB0 → ttyUSB1)."
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "The port must be between 1 and 65535."
+msgstr ""
+
+msgid "Add"
+msgstr ""
+
+msgid "Console access"
+msgstr ""
+
+msgid "The console is always reachable on the router itself and from the tailnet. Changes apply immediately: rsagent opens the new port first and only then closes the old one."
+msgstr ""
+
+msgid "Console port"
+msgstr ""
+
+msgid "Default 7890. Must not be used by LuCI, SSH or a bridge."
+msgstr ""
+
+msgid "Allow LAN access"
+msgstr ""
+
+msgid "LAN devices can open the console after logging in: through \"Open console\" here (no password needed), or with the LAN password set in the console."
+msgstr ""
+
+msgid "Saved. rsagent is not running; the change applies when it starts."
+msgstr ""
+
+msgid "Saved. The console now uses port %d."
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Serial-to-TCP bridges over Tailscale. This page covers the basics; use the console for editing bridges, the terminal, captures and logs."
+msgstr ""

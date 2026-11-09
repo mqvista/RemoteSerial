@@ -1,0 +1,85 @@
+#!/bin/sh
+# rpcd plugin for luci-app-rsagent: forwards ubus calls to "rsagent ctl", which talks to the
+# running rsagent over 127.0.0.1. Always prints one JSON object.
+
+BIN=/usr/bin/rsagent
+
+arg() { jsonfilter -s "$INPUT" -e "@.$1" 2>/dev/null; }
+fail() { printf '{"error":"%s"}\n' "$1"; exit 0; }
+
+case "$1" in
+list)
+	cat <<'JSON'
+{
+	"status": {},
+	"service": { "action": "str" },
+	"bridge": { "id": "str", "action": "str" },
+	"bridge_add": { "device": "str", "name": "str", "baud": 0, "mode": "str", "tcpPort": 0, "matchUSB": false },
+	"bridge_remove": { "id": "str" },
+	"console": { "port": 0, "lan": false },
+	"token": {},
+	"tailscale": { "action": "str" },
+	"tailscale_job": {},
+	"tailscale_login": {},
+	"tailscale_authkey": { "authKey": "str", "tags": "str" }
+}
+JSON
+	;;
+call)
+	read -r INPUT
+	[ -x "$BIN" ] || fail "rsagent is not installed ($BIN)"
+	case "$2" in
+	status) "$BIN" ctl status ;;
+	service)
+		a=$(arg action)
+		case "$a" in start|stop|restart|enable|disable) ;; *) fail "invalid action" ;; esac
+		"$BIN" ctl service "$a"
+		;;
+	bridge)
+		id=$(arg id); a=$(arg action)
+		case "$a" in start|stop) ;; *) fail "invalid action" ;; esac
+		[ -n "$id" ] || fail "missing bridge id"
+		"$BIN" ctl bridge "$id" "$a"
+		;;
+	bridge_add)
+		dev=$(arg device); name=$(arg name); baud=$(arg baud); mode=$(arg mode); tcp=$(arg tcpPort); match=$(arg matchUSB)
+		[ -n "$dev" ] || fail "missing device"
+		set -- --device "$dev"
+		[ -n "$name" ] && set -- "$@" --name "$name"
+		[ -n "$baud" ] && set -- "$@" --baud "$baud"
+		[ -n "$mode" ] && set -- "$@" --mode "$mode"
+		[ -n "$tcp" ] && [ "$tcp" != 0 ] && set -- "$@" --tcp-port "$tcp"
+		[ "$match" = true ] && set -- "$@" --match-usb
+		"$BIN" ctl bridge-add "$@"
+		;;
+	bridge_remove)
+		id=$(arg id)
+		[ -n "$id" ] || fail "missing bridge id"
+		"$BIN" ctl bridge-remove "$id"
+		;;
+	console)
+		port=$(arg port); lan=$(arg lan)
+		set --
+		[ -n "$port" ] && set -- "$@" --port "$port"
+		[ -n "$lan" ] && set -- "$@" "--lan=$lan"
+		"$BIN" ctl console "$@"
+		;;
+	token) "$BIN" ctl token ;;
+	tailscale)
+		a=$(arg action)
+		case "$a" in install|start|firewall) ;; *) fail "invalid action" ;; esac
+		"$BIN" ctl tailscale "$a"
+		;;
+	tailscale_job) "$BIN" ctl tailscale-job ;;
+	tailscale_login) "$BIN" ctl tailscale-login ;;
+	tailscale_authkey)
+		# the key goes to rsagent on stdin, never on a command line
+		key=$(arg authKey); tags=$(arg tags)
+		[ -n "$key" ] || fail "missing auth key"
+		printf '%s\n' "$key" | "$BIN" ctl tailscale-authkey --tags "$tags"
+		;;
+	*) fail "unknown method" ;;
+	esac
+	exit 0
+	;;
+esac

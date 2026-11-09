@@ -153,7 +153,9 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		resp.Applied = append(resp.Applied, "update")
 	}
 	resp.RestartRequired = len(resp.Pending) > 0
-	resp.Config = cfg
+	shown := *cfg
+	shown.Access.PasswordHash = ""
+	resp.Config = &shown
 	s.deps.Log.Info(i18n.T("设置已更新"), "applied", resp.Applied, "pending", resp.Pending, "by", requesterLabel(r))
 	s.hub.Notify()
 	writeJSON(w, http.StatusOK, resp)

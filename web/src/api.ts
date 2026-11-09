@@ -1,5 +1,7 @@
 // 与 core 的 REST API 对接。路径清单见方案文档 4.3 节。
 import { t } from './i18n'
+import { needLogin } from './session'
+import type { SessionInfo } from './session'
 
 export interface TailscaleSnapshot {
   state: string
@@ -229,7 +231,7 @@ export interface Config {
   listen: string
   logLevel: string
   tailscale: { hostname: string; controlURL: string; udpPort: number; webPort: number; advertiseRoutes: string[]; tags?: string[] }
-  access: { allowedLogins: string[] }
+  access: { allowedLogins: string[]; lan?: boolean }
   update: { url: string; autoCheck: boolean }
   bridges: BridgeConfig[]
 }
@@ -334,6 +336,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     try {
       const body = await r.json()
       if (body?.error) msg = body.error
+      if (r.status === 401 && body?.login) needLogin.value = true
     } catch {
       // 非 JSON 错误体
     }
@@ -346,7 +349,24 @@ function json(method: string, body: unknown): RequestInit {
   return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
 }
 
+export interface ConsoleInfo {
+  port: number
+  lan: boolean
+  listen: string
+  bind: string
+  webPort: number
+  passwordSet: boolean
+  live: boolean
+  warning?: string
+}
+
 export const api = {
+  session: () => request<SessionInfo>('/api/session'),
+  login: (password: string) => request<{ authenticated: boolean }>('/api/session/login', json('POST', { password })),
+  logout: () => request<{ authenticated: boolean }>('/api/session/logout', { method: 'POST' }),
+  setPassword: (password: string) => request<{ passwordSet: boolean }>('/api/session/password', json('PUT', { password })),
+  consoleInfo: () => request<ConsoleInfo>('/api/console'),
+  setConsole: (u: { port?: number; lan?: boolean }) => request<ConsoleInfo>('/api/console', json('PUT', u)),
   status: () => request<Status>('/api/status'),
   logs: (n = 500, level = 'debug') => request<{ entries: LogEntry[] }>(`/api/logs?n=${n}&level=${encodeURIComponent(level)}`),
   settings: () => request<Config>('/api/settings'),

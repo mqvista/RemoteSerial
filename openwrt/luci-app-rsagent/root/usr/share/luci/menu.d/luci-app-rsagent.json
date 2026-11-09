@@ -1,0 +1,13 @@
+{
+	"admin/services/rsagent": {
+		"title": "RemoteSerial",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "rsagent/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-rsagent" ]
+		}
+	}
+}

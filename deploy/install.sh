@@ -7,11 +7,12 @@
 # OpenWrt（以 root 登录，没有 curl 时用 wget）：
 #   wget -qO- https://raw.githubusercontent.com/mqvista/RemoteSerial/main/deploy/install.sh | sh
 #   wget -qO- .../install.sh | sh -s -- --with-tailscale
-#   离线：把 rsagent-openwrt-<arch>.tar.gz 解压后执行 sh install.sh
+#   离线：把 rsagent-openwrt-<arch>.tar.gz 解压后执行 sh rsagent-openwrt/install.sh
 #
 # 参数（OpenWrt）：
 #   --with-tailscale   系统没有 tailscale 时直接安装，不询问
 #   --no-tailscale     不安装系统 tailscale，改用 rsagent 内置的 Tailscale
+#   --no-luci          不安装 LuCI 页面（服务 → RemoteSerial）
 #
 # 环境变量：
 #   RSAGENT_VERSION    指定版本（如 0.6.0），默认最新
@@ -32,10 +33,12 @@ say() { printf '%s\n' "$*"; }
 die() { say "error: $*" >&2; exit 1; }
 
 TAILSCALE=${RSAGENT_TAILSCALE:-ask}
+LUCI=yes
 for a in "$@"; do
     case "$a" in
         --with-tailscale) TAILSCALE=yes ;;
         --no-tailscale) TAILSCALE=no ;;
+        --no-luci) LUCI=no ;;
         *) die "unknown option $a" ;;
     esac
 done
@@ -76,6 +79,7 @@ if [ -z "${RSAGENT_FROM_FILE:-}" ] && [ -n "$HERE" ] && [ -f "$HERE/rsagent" ] &
     RSAGENT_FROM_FILE="$HERE/rsagent"
 fi
 
+BASE=""
 if [ -n "${RSAGENT_FROM_FILE:-}" ]; then
     say "Using local file $RSAGENT_FROM_FILE"
     cp "$RSAGENT_FROM_FILE" "$TMP/rsagent"
@@ -142,7 +146,32 @@ if [ "$OPENWRT" = 1 ]; then
 
     "$BIN" service install --data-dir "$DATA"
     say "Service started: /etc/init.d/rsagent (logs in /tmp/rsagent/logs)"
-    say "Console: http://<tailscale IP>:7890/ from the tailnet, or over SSH: ssh -L 7890:127.0.0.1:7890 root@<router>"
+
+    # LuCI 页面：离线包里自带 luci/，在线安装时从同一处下载（找不到就跳过）
+    LUCI_OK=0
+    if [ "$LUCI" = yes ] && [ -d /www/luci-static ]; then
+        SRC=""
+        if [ -n "$HERE" ] && [ -d "$HERE/luci" ]; then
+            SRC="$HERE/luci"
+        elif [ -n "$BASE" ] && fetch "$BASE/luci-app-rsagent.tar.gz" "$TMP/luci.tar.gz" 2>/dev/null; then
+            tar -xzf "$TMP/luci.tar.gz" -C "$TMP" && SRC="$TMP/luci"
+        fi
+        if [ -n "$SRC" ]; then
+            cp -R "$SRC/." /
+            chmod 755 /usr/libexec/rpcd/luci.rsagent
+            rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
+            /etc/init.d/rpcd reload >/dev/null 2>&1 || true
+            LUCI_OK=1
+            say "Installed the LuCI page: Services -> RemoteSerial"
+        else
+            say "LuCI page not available for this install; skipped"
+        fi
+    fi
+    if [ "$LUCI_OK" = 1 ]; then
+        say "Console: open it from LuCI (Services -> RemoteSerial), or http://<tailscale IP>:7890/ from the tailnet"
+    else
+        say "Console: http://<tailscale IP>:7890/ from the tailnet, or over SSH: ssh -L 7890:127.0.0.1:7890 root@<router>"
+    fi
     exit 0
 fi
 

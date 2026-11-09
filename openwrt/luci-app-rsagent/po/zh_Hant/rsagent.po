@@ -1,0 +1,299 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_Hant\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "RemoteSerial"
+msgstr "RemoteSerial"
+
+msgid "Error"
+msgstr "錯誤"
+
+msgid "Connected"
+msgstr "已連線"
+
+msgid "Needs login"
+msgstr "需要登入"
+
+msgid "Waiting for approval"
+msgstr "等待核准"
+
+msgid "Starting"
+msgstr "啟動中"
+
+msgid "Stopped"
+msgstr "已停止"
+
+msgid "Not installed"
+msgstr "未安裝"
+
+msgid "Not running"
+msgstr "未執行"
+
+msgid "Not logged in"
+msgstr "未登入"
+
+msgid "Disabled"
+msgstr "已停用"
+
+msgid "Client connected"
+msgstr "用戶端已連線"
+
+msgid "Waiting for client"
+msgstr "等待用戶端"
+
+msgid "Waiting for network"
+msgstr "等待網路"
+
+msgid "Waiting for device"
+msgstr "等待裝置"
+
+msgid "RemoteSerial uses the router's own Tailscale (the \"tailscale\" package), which is not installed yet."
+msgstr "RemoteSerial 使用路由器本身的 Tailscale（tailscale 套件），目前尚未安裝。"
+
+msgid "Install Tailscale"
+msgstr "安裝 Tailscale"
+
+msgid "Or run on the router:"
+msgstr "或在路由器上執行："
+
+msgid "Only %d MB free on the overlay; about %d MB is needed."
+msgstr "overlay 只剩 %d MB，大約需要 %d MB。"
+
+msgid "Tailscale is installed but not running."
+msgstr "Tailscale 已安裝但未執行。"
+
+msgid "Start Tailscale and enable at boot"
+msgstr "啟動 Tailscale 並設為開機啟動"
+
+msgid "Tailscale is running but this router is not logged in to a tailnet yet."
+msgstr "Tailscale 已在執行，但這台路由器還沒有登入 Tailscale 網路。"
+
+msgid "Open this link to log in:"
+msgstr "開啟此連結登入："
+
+msgid "Log in in browser"
+msgstr "在瀏覽器中登入"
+
+msgid "Logged in. An admin must approve this device in the Tailscale admin console."
+msgstr "已登入，需要管理員在 Tailscale 管理後台核准這台裝置。"
+
+msgid "Tailscale is not ready."
+msgstr "Tailscale 尚未就緒。"
+
+msgid "Set up Tailscale"
+msgstr "設定 Tailscale"
+
+msgid "Or log in with an auth key:"
+msgstr "或用驗證金鑰登入："
+
+msgid "Auth key"
+msgstr "驗證金鑰"
+
+msgid "An auth key (tskey-auth-…) or an OAuth client secret (tskey-client-…) from the Tailscale admin console. It is used once and not stored."
+msgstr "在 Tailscale 管理後台產生的驗證金鑰（tskey-auth-…）或 OAuth 用戶端密鑰（tskey-client-…）。只用於這次登入，不會儲存。"
+
+msgid "Tags"
+msgstr "標籤"
+
+msgid "Comma separated, e.g. tag:serial-agent. Required for an OAuth client secret; leave empty for a personal auth key."
+msgstr "以逗號分隔，例如 tag:serial-agent。使用 OAuth 用戶端密鑰時必填；個人驗證金鑰可留空。"
+
+msgid "Log in with auth key"
+msgstr "用驗證金鑰登入"
+
+msgid "Enter an auth key first."
+msgstr "請先輸入驗證金鑰。"
+
+msgid "An OAuth client secret needs at least one tag, e.g. tag:serial-agent."
+msgstr "OAuth 用戶端密鑰至少需要一個標籤，例如 tag:serial-agent。"
+
+msgid "Logging in… the state updates in a few seconds."
+msgstr "登入中…幾秒後狀態會更新。"
+
+msgid "Stop"
+msgstr "停止"
+
+msgid "Restart"
+msgstr "重新啟動"
+
+msgid "Start"
+msgstr "啟動"
+
+msgid "Disable start at boot"
+msgstr "取消開機啟動"
+
+msgid "Enable start at boot"
+msgstr "設為開機啟動"
+
+msgid "Running"
+msgstr "執行中"
+
+msgid "starts at boot"
+msgstr "開機時啟動"
+
+msgid "does not start at boot"
+msgstr "開機時不啟動"
+
+msgid "(built-in Tailscale)"
+msgstr "（內建 Tailscale）"
+
+msgid "Service"
+msgstr "服務"
+
+msgid "Version"
+msgstr "版本"
+
+msgid "Tailscale"
+msgstr "Tailscale"
+
+msgid "Console"
+msgstr "管理介面"
+
+msgid "Status"
+msgstr "狀態"
+
+msgid "Start the service to open the console."
+msgstr "啟動服務後才能開啟管理介面。"
+
+msgid "Open console"
+msgstr "開啟管理介面"
+
+msgid "port %d"
+msgstr "連接埠 %d"
+
+msgid "Turn on \"Allow LAN access\" below to open the console from this browser."
+msgstr "開啟下方的「允許區域網路存取」後，才能從這個瀏覽器開啟管理介面。"
+
+msgid "From the tailnet:"
+msgstr "從 Tailscale 網路："
+
+msgid "Name"
+msgstr "名稱"
+
+msgid "Serial port"
+msgstr "序列埠"
+
+msgid "TCP port"
+msgstr "TCP 連接埠"
+
+msgid "State"
+msgstr "狀態"
+
+msgid "Client"
+msgstr "用戶端"
+
+msgid "Serial → TCP / TCP → serial"
+msgstr "序列埠 → TCP / TCP → 序列埠"
+
+msgid "Disable"
+msgstr "停用"
+
+msgid "Enable"
+msgstr "啟用"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "No bridges yet. Add one from a serial device below."
+msgstr "還沒有橋接，可以從下方的序列埠裝置新增。"
+
+msgid "Bridges"
+msgstr "橋接"
+
+msgid "Delete bridge \"%s\"? Its TCP port %d stops listening."
+msgstr "刪除橋接「%s」？TCP 連接埠 %d 將停止監聽。"
+
+msgid "Device"
+msgstr "裝置"
+
+msgid "Type"
+msgstr "類型"
+
+msgid "USB ID"
+msgstr "USB ID"
+
+msgid "Serial number"
+msgstr "序號"
+
+msgid "Used by"
+msgstr "使用中的橋接"
+
+msgid "USB serial"
+msgstr "USB 序列埠"
+
+msgid "Built-in"
+msgstr "內建"
+
+msgid "Add bridge"
+msgstr "新增橋接"
+
+msgid "No serial devices found. Plug in a USB serial adapter; it needs a driver such as kmod-usb-serial-ch341, -cp210x, -ftdi, -pl2303 or kmod-usb-acm."
+msgstr "找不到序列埠裝置。請插上 USB 轉序列埠轉接器；需要對應的驅動，例如 kmod-usb-serial-ch341、-cp210x、-ftdi、-pl2303 或 kmod-usb-acm。"
+
+msgid "Serial devices"
+msgstr "序列埠裝置"
+
+msgid "RFC2217 (client can change baud rate, recommended)"
+msgstr "RFC2217（用戶端可修改鮑率，建議）"
+
+msgid "Raw TCP (fixed parameters)"
+msgstr "原始 TCP（固定參數）"
+
+msgid "Add bridge for %s"
+msgstr "為 %s 新增橋接"
+
+msgid "Baud rate"
+msgstr "鮑率"
+
+msgid "Mode"
+msgstr "模式"
+
+msgid "Clients connect to this port on the router's Tailscale IP."
+msgstr "用戶端連到路由器 Tailscale IP 上的這個連接埠。"
+
+msgid "Match by USB ID"
+msgstr "依 USB ID 比對"
+
+msgid "Find the adapter by its USB ID and serial number, so the bridge keeps working when the device name changes (e.g. ttyUSB0 → ttyUSB1)."
+msgstr "依 USB ID 與序號尋找轉接器，裝置名稱改變時（例如 ttyUSB0 → ttyUSB1）橋接仍能運作。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "The port must be between 1 and 65535."
+msgstr "連接埠必須在 1 到 65535 之間。"
+
+msgid "Add"
+msgstr "新增"
+
+msgid "Console access"
+msgstr "管理介面存取"
+
+msgid "The console is always reachable on the router itself and from the tailnet. Changes apply immediately: rsagent opens the new port first and only then closes the old one."
+msgstr "在路由器本機與 Tailscale 網路上都能開啟管理介面。修改立即生效：rsagent 先在新連接埠監聽成功，才關閉舊的。"
+
+msgid "Console port"
+msgstr "管理介面連接埠"
+
+msgid "Default 7890. Must not be used by LuCI, SSH or a bridge."
+msgstr "預設 7890，不可與 LuCI、SSH 或橋接使用的連接埠相同。"
+
+msgid "Allow LAN access"
+msgstr "允許區域網路存取"
+
+msgid "LAN devices can open the console after logging in: through \"Open console\" here (no password needed), or with the LAN password set in the console."
+msgstr "區域網路上的裝置登入後即可開啟管理介面：從這裡的「開啟管理介面」進入（不需密碼），或使用在管理介面設定的區域網路密碼。"
+
+msgid "Saved. rsagent is not running; the change applies when it starts."
+msgstr "已儲存。rsagent 目前未執行，下次啟動時生效。"
+
+msgid "Saved. The console now uses port %d."
+msgstr "已儲存，管理介面現在使用連接埠 %d。"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Serial-to-TCP bridges over Tailscale. This page covers the basics; use the console for editing bridges, the terminal, captures and logs."
+msgstr "透過 Tailscale 把序列埠橋接成 TCP。這裡提供基本操作；編輯橋接、終端機、錄製與日誌請到管理介面。"
