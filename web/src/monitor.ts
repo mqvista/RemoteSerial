@@ -6,6 +6,7 @@
 export const DIR_RX = 0
 export const DIR_TX = 1 // TCP 客户端写入
 export const DIR_TX_WEB = 2 // 网页终端写入
+export const DIR_RX_WEB = 3 // 网页终端发给 TCP 客户端
 
 export interface TrafficRecord {
   dir: number
@@ -44,7 +45,8 @@ const RESET = ESC + '0m'
 const TAG: Record<number, string> = {
   [DIR_RX]: ESC + '32mRX' + RESET, // 绿
   [DIR_TX]: ESC + '33mTX' + RESET, // 黄
-  [DIR_TX_WEB]: ESC + '36mTX' + RESET, // 青：本页送出
+  [DIR_TX_WEB]: ESC + '36mTX' + RESET, // 青：本页送到串口
+  [DIR_RX_WEB]: ESC + '35mRX' + RESET, // 洋红：本页送到 TCP 客户端
 }
 const HEX_PER_LINE = 16
 
@@ -78,7 +80,7 @@ export class MonitorRenderer {
   }
 
   visible(dir: number) {
-    return dir === DIR_RX ? this.o.showRx : this.o.showTx
+    return dir === DIR_RX || dir === DIR_RX_WEB ? this.o.showRx : this.o.showTx
   }
 
   private prefix(time: number, cont = false): string {

@@ -45,6 +45,11 @@ function bytes(n) {
 	return '%1024.1mB'.format(n || 0);
 }
 
+// Rate over the last second, sampled by rsagent
+function rate(n) {
+	return bytes(n) + '/s';
+}
+
 function stateLabel(state) {
 	switch (state) {
 	case 'Running': return _('Connected');
@@ -292,8 +297,6 @@ return view.extend({
 		if (running) {
 			tsText = [ badge(stateLabel(ts.state), ts.state === 'Running') ];
 			if (ts.ip) tsText.push(' ', E('code', {}, txt(ts.ip)));
-			if (ts.dnsName) tsText.push(' ', ts.dnsName.replace(/\.$/, ''));
-			if (ts.backend === 'embedded') tsText.push(' ', E('em', {}, _('(built-in Tailscale)')));
 		}
 
 		var rows = [
@@ -308,6 +311,58 @@ return view.extend({
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('Status')),
 			E('table', { 'class': 'table' }, rows)
+		]);
+	},
+
+	// Node details from the Tailscale snapshot, plus the firewall check with a one-click fix.
+	renderTailnet: function(st) {
+		var ts = (st.status && st.status.tailscale) || {}, sys = ts.system || {};
+		if (!st.running || !ts.state)
+			return E('div');
+
+		var rows = [];
+		var state = [ badge(stateLabel(ts.state), ts.state === 'Running') ];
+		if (ts.backend === 'embedded')
+			state.push(' ', E('em', {}, _('(built-in Tailscale)')));
+		else if (sys.version)
+			state.push(' ', E('span', { 'style': 'opacity:.8' }, txt('tailscaled ' + sys.version)));
+		rows.push(row(_('State'), E('div', {}, state)));
+
+		if (ts.ip || ts.ipv6) {
+			var ips = [];
+			if (ts.ip) ips.push(E('code', {}, txt(ts.ip)));
+			if (ts.ipv6) ips.push(' ', E('code', {}, txt(ts.ipv6)));
+			rows.push(row(_('Node IP'), E('div', {}, ips)));
+		}
+		if (ts.dnsName)
+			rows.push(row(_('MagicDNS'), E('code', {}, txt(ts.dnsName.replace(/\.$/, '')))));
+		if (ts.tailnet)
+			rows.push(row(_('Tailscale network'), ts.tailnet));
+		if (ts.loginName)
+			rows.push(row(_('Account'), ts.loginName));
+		if (ts.state === 'Running' || (ts.tags && ts.tags.length)) {
+			var tags = (ts.tags && ts.tags.length)
+				? ts.tags.map(function(t) { return E('code', { 'style': 'margin-right:4px' }, txt(t)); })
+				: [ E('span', { 'style': 'opacity:.8' }, _('None (the node belongs to the account above)')) ];
+			rows.push(row(_('Tags'), E('div', {}, tags)));
+		}
+		if (ts.keyExpiry && ts.keyExpiry.indexOf('0001-') !== 0)
+			rows.push(row(_('Key expiry'), new Date(ts.keyExpiry).toLocaleString()));
+
+		// The firewall zone only matters for the system Tailscale (tailscale0 is a real interface)
+		if (ts.backend === 'system' && sys.firewallZone != null) {
+			var fw = sys.firewallZone
+				? [ E('span', { 'style': 'color:#4caf50' }, _('tailscale0 is in a firewall zone')) ]
+				: [ E('span', { 'style': 'color:#e53935' }, _('tailscale0 is not in any firewall zone; devices on the Tailscale network may not reach the bridges or the console.')), ' ' ];
+			if (!sys.firewallZone && sys.canManage)
+				fw.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'runTailscale', 'firewall') }, _('Add to firewall')));
+			rows.push(row(_('Firewall'), E('div', {}, fw)));
+		}
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Tailscale')),
+			E('table', { 'class': 'table' }, rows),
+			ts.state === 'Running' ? E('p', { 'style': 'margin-top:6px' }, E('a', { 'href': 'https://login.tailscale.com/admin/machines', 'target': '_blank', 'rel': 'noreferrer' }, _('Open the Tailscale admin console'))) : ''
 		]);
 	},
 
@@ -426,7 +481,10 @@ return view.extend({
 				E('td', { 'class': 'td' }, String(b.tcpPort)),
 				E('td', { 'class': 'td' }, [ badge(bridgeStateLabel(b), b.enabled && b.state === 'Connected'), b.lastError ? E('div', { 'style': 'opacity:.8' }, txt(b.lastError)) : '' ]),
 				E('td', { 'class': 'td' }, txt(b.client || '-')),
-				E('td', { 'class': 'td' }, bytes(b.fromDevice) + ' / ' + bytes(b.toDevice)),
+				E('td', { 'class': 'td' }, [
+					E('div', {}, txt(bytes(b.fromDevice) + ' / ' + bytes(b.toDevice))),
+					E('div', { 'style': 'opacity:.8;font-size:90%' }, txt(rate(b.rateFromDevice) + ' / ' + rate(b.rateToDevice)))
+				]),
 				E('td', { 'class': 'td cbi-section-actions', 'style': 'white-space:nowrap' }, [
 					E('button', {
 						'class': 'cbi-button ' + (b.enabled ? 'cbi-button-reset' : 'cbi-button-apply'),
@@ -603,6 +661,7 @@ return view.extend({
 	update: function(st, withSettings) {
 		dom.content(this.tsNode, this.renderTailscale(st));
 		dom.content(this.statusNode, this.renderStatus(st));
+		dom.content(this.tailnetNode, this.renderTailnet(st));
 		dom.content(this.bridgesNode, this.renderBridges(st));
 		dom.content(this.portsNode, this.renderPorts(st));
 		// The settings form is only rebuilt on demand so polling does not overwrite what is being typed.
@@ -616,6 +675,7 @@ return view.extend({
 		this.bridgesNode = E('div');
 		this.settingsNode = E('div');
 		this.portsNode = E('div');
+		this.tailnetNode = E('div');
 		this.jobHead = E('p');
 		// No wrapping: the height then depends only on the line count, so "scrolled to the end" stays true when the page width changes
 		this.jobLog = E('pre', { 'style': 'max-height:240px;overflow:auto;white-space:pre;margin:0' });
@@ -637,6 +697,7 @@ return view.extend({
 			this.tsNode,
 			this.jobNode,
 			this.statusNode,
+			this.tailnetNode,
 			this.bridgesNode,
 			this.portsNode,
 			this.settingsNode

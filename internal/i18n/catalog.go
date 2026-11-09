@@ -408,4 +408,6 @@ var catalog = map[string][2]string{
 	"启用 Tailscale 服务设置失败: %w":                                                          {"failed to enable the Tailscale service setting: %w", "啟用 Tailscale 服務設定失敗: %w"},
 	"tailscale 没有启动：请到 LuCI 的「VPN → Tailscale」页面勾选「Enable Tailscale Service」后保存，再回到这里": {"tailscale did not start: in LuCI, open VPN → Tailscale, tick \"Enable Tailscale Service\", save, then come back here", "tailscale 沒有啟動：請到 LuCI 的「VPN → Tailscale」頁面勾選「啟用 Tailscale 服務」後儲存，再回到這裡"},
 	"tailscale 没有启动，请用 logread -e tailscale 查看原因":                                      {"tailscale did not start; run logread -e tailscale to see why", "tailscale 沒有啟動，請用 logread -e tailscale 查看原因"},
+	"没有已连接的 TCP 客户端":                                                                   {"no TCP client is connected", "沒有已連線的 TCP 用戶端"},
+	"终端写入 TCP 客户端失败":                                                                   {"Terminal write to the TCP client failed", "終端機寫入 TCP 用戶端失敗"},
 }

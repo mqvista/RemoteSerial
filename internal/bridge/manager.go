@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"rsagent/internal/i18n"
 	"sync"
+	"time"
 
 	"rsagent/internal/config"
 )
@@ -23,11 +24,34 @@ type Manager struct {
 
 // NewManager 创建管理器。onChange 在任何桥接状态变化时被调用。
 func NewManager(log *slog.Logger, whois WhoIsFunc, onChange func()) *Manager {
-	return &Manager{
+	m := &Manager{
 		log:      log,
 		whois:    whois,
 		onChange: onChange,
 		bridges:  map[string]*Bridge{},
+	}
+	go m.rateLoop()
+	return m
+}
+
+// rateLoop 每秒为各桥接取样一次速率；有变化（包括降回 0）时通知界面，速率才会实时更新。
+// Manager 与进程同生命周期，所以不需要停止。
+func (m *Manager) rateLoop() {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for now := range t.C {
+		m.mu.Lock()
+		list := m.allLocked()
+		m.mu.Unlock()
+		changed := false
+		for _, b := range list {
+			if b.sampleRate(now) {
+				changed = true
+			}
+		}
+		if changed && m.onChange != nil {
+			m.onChange()
+		}
 	}
 }
 

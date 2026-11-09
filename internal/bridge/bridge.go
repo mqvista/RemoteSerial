@@ -37,28 +37,31 @@ const (
 
 // Status 是桥接状态快照。
 type Status struct {
-	ID           string        `json:"id"`
-	Name         string        `json:"name"`
-	Port         string        `json:"port"`         // 配置的串口
-	ResolvedPort string        `json:"resolvedPort"` // 实际打开的串口
-	TCPPort      int           `json:"tcpPort"`
-	LocalPort    int           `json:"localPort,omitempty"`
-	Mode         string        `json:"mode"`
-	Baud         int           `json:"baud"`
-	Active       string        `json:"active"`   // 实际生效的参数，如 115200 8N1
-	ParamsBy     string        `json:"paramsBy"` // config | client
-	DTR          bool          `json:"dtr"`
-	RTS          bool          `json:"rts"`
-	Enabled      bool          `json:"enabled"`
-	State        State         `json:"state"`
-	DeviceOpen   bool          `json:"deviceOpen"`
-	Client       string        `json:"client,omitempty"`
-	ClientSince  time.Time     `json:"clientSince,omitzero"`
-	FromDevice   int64         `json:"fromDevice"` // 串口 → TCP 字节数
-	ToDevice     int64         `json:"toDevice"`   // TCP → 串口 字节数
-	Viewers      int           `json:"viewers"`    // 网页终端订阅数
-	Capture      CaptureStatus `json:"capture"`
-	LastError    string        `json:"lastError,omitempty"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Port         string    `json:"port"`         // 配置的串口
+	ResolvedPort string    `json:"resolvedPort"` // 实际打开的串口
+	TCPPort      int       `json:"tcpPort"`
+	LocalPort    int       `json:"localPort,omitempty"`
+	Mode         string    `json:"mode"`
+	Baud         int       `json:"baud"`
+	Active       string    `json:"active"`   // 实际生效的参数，如 115200 8N1
+	ParamsBy     string    `json:"paramsBy"` // config | client
+	DTR          bool      `json:"dtr"`
+	RTS          bool      `json:"rts"`
+	Enabled      bool      `json:"enabled"`
+	State        State     `json:"state"`
+	DeviceOpen   bool      `json:"deviceOpen"`
+	Client       string    `json:"client,omitempty"`
+	ClientSince  time.Time `json:"clientSince,omitzero"`
+	FromDevice   int64     `json:"fromDevice"` // 串口 → TCP 字节数
+	ToDevice     int64     `json:"toDevice"`   // TCP → 串口 字节数
+	// 最近一秒的速率（字节/秒），由 Manager 每秒取样
+	RateFromDevice int64         `json:"rateFromDevice"`
+	RateToDevice   int64         `json:"rateToDevice"`
+	Viewers        int           `json:"viewers"` // 网页终端订阅数
+	Capture        CaptureStatus `json:"capture"`
+	LastError      string        `json:"lastError,omitempty"`
 }
 
 // ListenFunc 创建 TCP 监听，由 tsnet 节点提供。
@@ -102,6 +105,43 @@ type Bridge struct {
 	fromDevice atomic.Int64
 	toDevice   atomic.Int64
 	tap        *tap
+	rate       rateMeter
+}
+
+// rateMeter 记录上次取样的计数，算出最近一个取样周期的速率。
+type rateMeter struct {
+	mu               sync.Mutex
+	at               time.Time
+	lastFrom, lastTo int64
+	fromRate, toRate int64
+}
+
+// sampleRate 取样一次，返回速率是否有变化。
+func (b *Bridge) sampleRate(now time.Time) bool {
+	from, to := b.fromDevice.Load(), b.toDevice.Load()
+	r := &b.rate
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.at.IsZero() {
+		r.at, r.lastFrom, r.lastTo = now, from, to
+		return false
+	}
+	secs := now.Sub(r.at).Seconds()
+	if secs <= 0 {
+		return false
+	}
+	// 计数器在重新打开时可能归零，这时不算出负速率
+	fr, tr := int64(float64(max(from-r.lastFrom, 0))/secs+0.5), int64(float64(max(to-r.lastTo, 0))/secs+0.5)
+	changed := fr != r.fromRate || tr != r.toRate
+	r.fromRate, r.toRate = fr, tr
+	r.at, r.lastFrom, r.lastTo = now, from, to
+	return changed
+}
+
+func (b *Bridge) rates() (from, to int64) {
+	b.rate.mu.Lock()
+	defer b.rate.mu.Unlock()
+	return b.rate.fromRate, b.rate.toRate
 }
 
 func newBridge(cfg config.Bridge, log *slog.Logger, whois WhoIsFunc, onChange func()) *Bridge {
@@ -135,31 +175,34 @@ func configMode(cfg config.Bridge) rfc2217.Mode {
 func (b *Bridge) Status() Status {
 	capSt := b.Capture()
 	viewers := b.tap.count()
+	rateFrom, rateTo := b.rates()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return Status{
-		Capture:      capSt,
-		ID:           b.cfg.ID,
-		Name:         b.cfg.Name,
-		Port:         b.cfg.Port,
-		ResolvedPort: b.resolved,
-		TCPPort:      b.cfg.TCPPort,
-		LocalPort:    b.cfg.LocalPort,
-		Mode:         b.cfg.Mode,
-		Baud:         b.cfg.Baud,
-		Active:       b.active.String(),
-		ParamsBy:     b.paramsBy,
-		DTR:          b.dtr,
-		RTS:          b.rts,
-		Enabled:      b.cfg.Enabled,
-		State:        b.state,
-		DeviceOpen:   b.port != nil,
-		Client:       b.clientLabel,
-		ClientSince:  b.clientSince,
-		FromDevice:   b.fromDevice.Load(),
-		ToDevice:     b.toDevice.Load(),
-		Viewers:      viewers,
-		LastError:    i18n.String(b.lastErr),
+		Capture:        capSt,
+		ID:             b.cfg.ID,
+		Name:           b.cfg.Name,
+		Port:           b.cfg.Port,
+		ResolvedPort:   b.resolved,
+		TCPPort:        b.cfg.TCPPort,
+		LocalPort:      b.cfg.LocalPort,
+		Mode:           b.cfg.Mode,
+		Baud:           b.cfg.Baud,
+		Active:         b.active.String(),
+		ParamsBy:       b.paramsBy,
+		DTR:            b.dtr,
+		RTS:            b.rts,
+		Enabled:        b.cfg.Enabled,
+		State:          b.state,
+		DeviceOpen:     b.port != nil,
+		Client:         b.clientLabel,
+		ClientSince:    b.clientSince,
+		FromDevice:     b.fromDevice.Load(),
+		ToDevice:       b.toDevice.Load(),
+		RateFromDevice: rateFrom,
+		RateToDevice:   rateTo,
+		Viewers:        viewers,
+		LastError:      i18n.String(b.lastErr),
 	}
 }
 
@@ -187,6 +230,25 @@ func (b *Bridge) WriteDevice(p []byte) error {
 	if n > 0 {
 		b.captureTx(p[:n])
 		b.tap.publish(DirTXWeb, p[:n])
+	}
+	return err
+}
+
+// WriteClient 把网页终端的数据发给当前连接的 TCP 客户端，像是设备输出的一样（RFC2217 模式下照常转义）。
+// 不计入串口流量，记入流量历史以便监看。
+func (b *Bridge) WriteClient(p []byte) error {
+	b.mu.Lock()
+	c := b.client
+	b.mu.Unlock()
+	if c == nil {
+		return i18n.New("没有已连接的 TCP 客户端")
+	}
+	n, err := c.Write(p)
+	if n > 0 {
+		b.tap.publish(DirRXWeb, p[:n])
+	}
+	if err != nil {
+		b.dropClient(i18n.Sprintf("写入客户端失败: %v", err))
 	}
 	return err
 }

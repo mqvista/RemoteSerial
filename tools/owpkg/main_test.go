@@ -11,9 +11,11 @@ import (
 
 func TestPkgVersion(t *testing.T) {
 	for in, want := range map[string][2]string{
-		"0.6.0":     {"0.6.0-r1", "0.6.0-r1"},
-		"v1.2.3":    {"1.2.3-r1", "1.2.3-r1"},
-		"0.6.0-dev": {"0.6.0~pre-r1", "0.6.0_pre-r1"},
+		"0.6.0":       {"0.6.0-r1", "0.6.0-r1"},
+		"v1.2.3":      {"1.2.3-r1", "1.2.3-r1"},
+		"0.6.0-dev":   {"0.6.0~pre-r1", "0.6.0_pre-r1"},
+		"0.6.1-dev.3": {"0.6.1~pre3-r1", "0.6.1_pre3-r1"},
+		"0.7.0-rc12":  {"0.7.0~pre12-r1", "0.7.0_pre12-r1"},
 	} {
 		ipk, apk := pkgVersion(in)
 		if ipk != want[0] || apk != want[1] {

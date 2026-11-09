@@ -12,6 +12,7 @@ package tsnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -55,6 +56,31 @@ func (n *Node) Poke() {
 }
 
 // RefreshSystem 立即重新检测系统 tailscale 的安装与防火墙状态，不影响连接。
+// sysRefreshLoop 在连接期间每 30 秒重新检测一次（防火墙区域、开机启动、LuCI 应用），
+// 在别处（LuCI、命令行）做的修改界面也能看到；有变化才推送。
+func (n *Node) sysRefreshLoop(ctx context.Context) {
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		info := systs.Detect(n.cfg.Socket)
+		n.mu.Lock()
+		old := n.sys
+		info.SocketOK, info.Installed, info.Version = old.SocketOK, old.Installed || info.Installed, old.Version
+		changed := fmt.Sprint(old.FirewallZone != nil && *old.FirewallZone, old.ServiceEnabled, old.LuciApp) !=
+			fmt.Sprint(info.FirewallZone != nil && *info.FirewallZone, info.ServiceEnabled, info.LuciApp)
+		n.sys = info
+		n.mu.Unlock()
+		if changed {
+			n.emit()
+		}
+	}
+}
+
 func (n *Node) RefreshSystem() {
 	if !n.System() {
 		return
@@ -218,7 +244,10 @@ func (n *Node) sysLoop(ctx context.Context, done chan struct{}) {
 			n.mu.Unlock()
 			n.log.Info(i18n.T("已连接系统 Tailscale"), "socket", n.cfg.Socket, "version", info.Version)
 			n.emit()
+			wctx, wcancel := context.WithCancel(ctx)
+			go n.sysRefreshLoop(wctx)
 			n.watchOnce(ctx, lc)
+			wcancel()
 			n.mu.Lock()
 			n.lc = nil
 			n.mu.Unlock()

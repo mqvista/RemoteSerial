@@ -145,8 +145,9 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-// pkgVersion 把发布版本变成套件版本：0.6.0 → 0.6.0-r1。开发版要排在正式版之前，两种格式写法不同：
-// opkg 用 ~（0.6.0~pre-r1 < 0.6.0-r1），apk 不接受 ~，用 _pre（0.6.0_pre-r1 < 0.6.0-r1）。
+// pkgVersion 把发布版本变成套件版本：0.6.0 → 0.6.0-r1。预发布版要排在正式版之前，两种格式写法不同：
+// opkg 用 ~（0.6.0~pre3-r1 < 0.6.0-r1），apk 不接受 ~，用 _pre（0.6.0_pre3-r1 < 0.6.0-r1）。
+// 后缀里的数字保留下来（0.6.1-dev.3 → pre3），每次测试构建的版本才不同，套件管理器才会真的安装。
 func pkgVersion(v string) (ipk, apk string) {
 	v = strings.TrimPrefix(v, "v")
 	base, suffix, _ := strings.Cut(v, "-")
@@ -156,7 +157,13 @@ func pkgVersion(v string) (ipk, apk string) {
 	if suffix == "" {
 		return base + "-r1", base + "-r1"
 	}
-	return base + "~pre-r1", base + "_pre-r1"
+	n := preNumber(suffix)
+	return base + "~pre" + n + "-r1", base + "_pre" + n + "-r1"
+}
+
+// preNumber 取出预发布后缀里的数字：dev.3 → 3，rc12 → 12，dev → ""。
+func preNumber(suffix string) string {
+	return strings.Join(regexp.MustCompile(`[0-9]+`).FindAllString(suffix, -1), "")
 }
 
 func readTree(root string) ([]file, error) {

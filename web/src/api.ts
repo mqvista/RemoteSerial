@@ -100,6 +100,8 @@ export interface BridgeStatus {
   clientSince?: string
   fromDevice: number
   toDevice: number
+  rateFromDevice?: number // 最近一秒的速率（字节/秒）
+  rateToDevice?: number
   lastError?: string
 }
 
@@ -465,6 +467,11 @@ export function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+/** 速率，如 11.3 KB/s。 */
+export function formatRate(n?: number): string {
+  return `${formatBytes(n ?? 0)}/s`
 }
 
 export const BAUD_RATES = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1500000, 2000000]

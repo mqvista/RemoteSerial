@@ -3,7 +3,7 @@ import { computed, h } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NAlert, NCard, NDataTable, NDescriptions, NDescriptionsItem, NGrid, NGi, NStatistic, NTag, NText } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import { formatBytes, formatUptime } from '../api'
+import { formatBytes, formatRate, formatUptime } from '../api'
 import type { BridgeStatus } from '../api'
 import { useStatus } from '../status'
 import { t, tOr } from '../i18n'
@@ -47,6 +47,7 @@ const bridgeColumns = computed<DataTableColumns<BridgeStatus>>(() => [
   },
   { title: t('col.client'), key: 'client', minWidth: 150, ellipsis: { tooltip: true }, render: (b) => b.client || '-' },
   { title: t('col.traffic'), key: 'bytes', width: 160, render: (b) => `↓ ${formatBytes(b.fromDevice)} ↑ ${formatBytes(b.toDevice)}` },
+  { title: t('col.rate'), key: 'rate', width: 170, render: (b) => `↓ ${formatRate(b.rateFromDevice)} ↑ ${formatRate(b.rateToDevice)}` },
   { title: t('col.error'), key: 'lastError', minWidth: 120, ellipsis: { tooltip: true }, render: (b) => h(NText, { type: 'error', style: 'font-size:12px' }, { default: () => b.lastError || '' }) },
 ])
 </script>

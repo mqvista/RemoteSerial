@@ -25,8 +25,9 @@ interface Prefs {
   gapMs: number
   lineEnding: '' | '\r' | '\n' | '\r\n'
   sendHex: boolean
+  sendTo: 'serial' | 'client' // 送出列发往串口，或发给当前连接的 TCP 客户端（网络端）
 }
-const prefs = reactive<Prefs>({ view: 'monitor', showRx: true, showTx: true, timestamp: true, hex: false, gapMs: 100, lineEnding: '\r\n', sendHex: false })
+const prefs = reactive<Prefs>({ view: 'monitor', showRx: true, showTx: true, timestamp: true, hex: false, gapMs: 100, lineEnding: '\r\n', sendHex: false, sendTo: 'serial' })
 try {
   Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY) || '{}'))
 } catch {
@@ -67,6 +68,10 @@ const eolOptions = computed(() => [
   { label: t('term.eolLF'), value: '\n' },
   { label: t('term.eolCR'), value: '\r' },
   { label: t('term.eolNone'), value: '' },
+])
+const sendToOptions = computed(() => [
+  { label: t('term.toSerial'), value: 'serial' },
+  { label: t('term.toClient'), value: 'client' },
 ])
 const formatOptions = computed(() => [
   { label: t('term.text'), value: 'text' },
@@ -227,6 +232,22 @@ function sendBytes(b: Uint8Array<ArrayBuffer>) {
   if (ws && ws.readyState === WebSocket.OPEN && readWrite.value && b.length) ws.send(b)
 }
 
+function toBase64(b: Uint8Array): string {
+  let s = ''
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+
+// 发给当前连接的 TCP 客户端，像是设备输出的一样
+function sendToClient(b: Uint8Array): boolean {
+  if (!termStatus.value?.client) {
+    message.warning(t('term.noClient'))
+    return false
+  }
+  if (ws && ws.readyState === WebSocket.OPEN && readWrite.value && b.length) ws.send(JSON.stringify({ type: 'client', data: toBase64(b) }))
+  return true
+}
+
 // ---- 下方送出列 ----
 const HISTORY_KEY = 'rsagent.term.history'
 const sendInput = ref('')
@@ -253,7 +274,11 @@ function send() {
     bytes = new TextEncoder().encode(v + prefs.lineEnding)
     if (!bytes.length) return
   }
-  sendBytes(bytes)
+  if (prefs.sendTo === 'client') {
+    if (!sendToClient(bytes)) return
+  } else {
+    sendBytes(bytes)
+  }
   if (v) {
     history = [v, ...history.filter((h) => h !== v)].slice(0, 50)
     try {
@@ -378,7 +403,8 @@ onBeforeUnmount(() => {
           <template #trigger>
             <NCheckbox v-model:checked="prefs.showRx"><span class="rx">RX</span></NCheckbox>
           </template>
-          {{ t('term.rxTip') }}
+          <div><span class="rx">■</span> {{ t('term.rxTip') }}</div>
+          <div><span class="rxweb">■</span> {{ t('term.rxWebTip') }}</div>
         </NTooltip>
         <NTooltip>
           <template #trigger>
@@ -406,6 +432,7 @@ onBeforeUnmount(() => {
 
     <div class="bar">
       <NInputGroup>
+        <NSelect v-model:value="prefs.sendTo" :options="sendToOptions" style="width: 150px" :aria-label="t('term.sendTo')" />
         <NSelect v-model:value="sendFormat" :options="formatOptions" style="width: 90px" />
         <NInput
           v-model:value="sendInput"
@@ -462,6 +489,10 @@ onBeforeUnmount(() => {
 }
 .txweb {
   color: #2bb3c0;
+  font-weight: 600;
+}
+.rxweb {
+  color: #d670d6;
   font-weight: 600;
 }
 </style>

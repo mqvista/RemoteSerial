@@ -34,22 +34,25 @@ type PkgFile struct {
 
 var pkgBase = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
 
-// pkgVersion 与 tools/owpkg 相同：0.6.0 → 0.6.0-r1；预发布版 opkg 用 ~pre，apk 用 _pre。
+// pkgVersion 与 tools/owpkg 相同：0.6.0 → 0.6.0-r1；预发布版 opkg 用 ~preN，apk 用 _preN（N 为后缀里的数字）。
 func pkgVersion(v, mgr string) (string, bool) {
 	v = strings.TrimPrefix(v, "v")
 	base, suffix, _ := strings.Cut(v, "-")
 	if !pkgBase.MatchString(base) {
 		return "", false
 	}
+	n := strings.Join(preDigits.FindAllString(suffix, -1), "")
 	switch {
 	case suffix == "":
 		return base + "-r1", true
 	case mgr == "apk":
-		return base + "_pre-r1", true
+		return base + "_pre" + n + "-r1", true
 	default:
-		return base + "~pre-r1", true
+		return base + "~pre" + n + "-r1", true
 	}
 }
+
+var preDigits = regexp.MustCompile(`[0-9]+`)
 
 // pkgArch 是套件的架构名，与 tools/owpkg 的对应表一致。
 func pkgArch() string {

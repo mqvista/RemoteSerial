@@ -21,7 +21,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, SelectOption } from 'naive-ui'
-import { api, BAUD_RATES, formatBytes } from '../api'
+import { api, BAUD_RATES, formatBytes, formatRate } from '../api'
 import type { BridgeConfig, BridgeStatus, CaptureFile, SerialPort } from '../api'
 import { useStatus } from '../status'
 import { formatTime, t, tOr } from '../i18n'
@@ -380,7 +380,12 @@ onMounted(() => {
             <div class="meta">
               <span class="k">{{ t('bridges.metaTraffic') }}</span>
               <span class="v" :title="t('bridges.trafficTip')">
-                <template v-if="statusById[c.id]">↓ {{ formatBytes(statusById[c.id].fromDevice) }} ↑ {{ formatBytes(statusById[c.id].toDevice) }}</template>
+                <template v-if="statusById[c.id]">
+                  ↓ {{ formatBytes(statusById[c.id].fromDevice) }} ↑ {{ formatBytes(statusById[c.id].toDevice) }}
+                  <NText depth="3" class="sub" :title="t('bridges.rateTip')">
+                    ↓ {{ formatRate(statusById[c.id].rateFromDevice) }} ↑ {{ formatRate(statusById[c.id].rateToDevice) }}
+                  </NText>
+                </template>
                 <template v-else>-</template>
               </span>
             </div>

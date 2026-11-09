@@ -166,9 +166,6 @@ msgstr "開機時啟動"
 msgid "does not start at boot"
 msgstr "開機時不啟動"
 
-msgid "(built-in Tailscale)"
-msgstr "（內建 Tailscale）"
-
 msgid "Service"
 msgstr "服務"
 
@@ -183,6 +180,45 @@ msgstr "管理介面"
 
 msgid "Status"
 msgstr "狀態"
+
+msgid "(built-in Tailscale)"
+msgstr "（內建 Tailscale）"
+
+msgid "State"
+msgstr "狀態"
+
+msgid "Node IP"
+msgstr "節點 IP"
+
+msgid "MagicDNS"
+msgstr "MagicDNS"
+
+msgid "Tailscale network"
+msgstr "Tailscale 網路"
+
+msgid "Account"
+msgstr "帳號"
+
+msgid "None (the node belongs to the account above)"
+msgstr "無（節點屬於上面的帳號）"
+
+msgid "Key expiry"
+msgstr "金鑰到期"
+
+msgid "tailscale0 is in a firewall zone"
+msgstr "tailscale0 已加入防火牆區域"
+
+msgid "tailscale0 is not in any firewall zone; devices on the Tailscale network may not reach the bridges or the console."
+msgstr "tailscale0 尚未加入任何防火牆區域，Tailscale 網路上的裝置可能無法連到橋接埠和管理介面。"
+
+msgid "Add to firewall"
+msgstr "加入防火牆"
+
+msgid "Firewall"
+msgstr "防火牆"
+
+msgid "Open the Tailscale admin console"
+msgstr "開啟 Tailscale 管理後台"
 
 msgid "Installing the update; rsagent restarts by itself…"
 msgstr "正在安裝更新，rsagent 會自動重新啟動…"
@@ -234,9 +270,6 @@ msgstr "序列埠"
 
 msgid "TCP port"
 msgstr "TCP 連接埠"
-
-msgid "State"
-msgstr "狀態"
 
 msgid "Client"
 msgstr "用戶端"

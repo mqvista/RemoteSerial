@@ -15,11 +15,12 @@ import (
 
 // 网页终端协议（/ws/term/{id}?mode=rw|ro）：
 //   - 服务端 → 客户端：二进制帧是一条或多条流量记录，每条为
-//     方向(1 字节：0 RX 设备输出，1 TX TCP 客户端写入，2 TX 网页终端写入)
+//     方向(1 字节：0 RX 设备输出，1 TX TCP 客户端写入，2 TX 网页终端写入串口，3 RX 网页终端发给 TCP 客户端)
 //     + 时间(8 字节，Unix 微秒，大端) + 长度(4 字节，大端) + 数据；
 //     文本帧是 JSON 状态 {"type":"status",...}
 //   - 客户端 → 服务端：二进制帧写入串口（rw 模式）；文本帧是控制命令
 //     {"type":"break"} {"type":"dtr","on":true} {"type":"rts","on":false}
+//     {"type":"client","data":"<base64>"} 把数据发给当前连接的 TCP 客户端（网络端）
 // 连接建立时先发最近约 64KB 的双向历史。
 
 const termRecordHeader = 13
@@ -39,6 +40,7 @@ const termFrameLimit = 32 << 10
 type termControl struct {
 	Type string `json:"type"`
 	On   bool   `json:"on"`
+	Data []byte `json:"data,omitempty"` // client：要发给 TCP 客户端的数据（base64）
 }
 
 type termStatus struct {
@@ -159,6 +161,10 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 				case "rts":
 					_ = b.SetRTS(cmd.On)
 					s.hub.Notify()
+				case "client":
+					if err := b.WriteClient(cmd.Data); err != nil {
+						s.deps.Log.Debug(i18n.T("终端写入 TCP 客户端失败"), "bridge", id, "err", err)
+					}
 				}
 			}
 		}

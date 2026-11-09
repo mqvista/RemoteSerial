@@ -163,9 +163,6 @@ msgstr ""
 msgid "does not start at boot"
 msgstr ""
 
-msgid "(built-in Tailscale)"
-msgstr ""
-
 msgid "Service"
 msgstr ""
 
@@ -179,6 +176,45 @@ msgid "Console"
 msgstr ""
 
 msgid "Status"
+msgstr ""
+
+msgid "(built-in Tailscale)"
+msgstr ""
+
+msgid "State"
+msgstr ""
+
+msgid "Node IP"
+msgstr ""
+
+msgid "MagicDNS"
+msgstr ""
+
+msgid "Tailscale network"
+msgstr ""
+
+msgid "Account"
+msgstr ""
+
+msgid "None (the node belongs to the account above)"
+msgstr ""
+
+msgid "Key expiry"
+msgstr ""
+
+msgid "tailscale0 is in a firewall zone"
+msgstr ""
+
+msgid "tailscale0 is not in any firewall zone; devices on the Tailscale network may not reach the bridges or the console."
+msgstr ""
+
+msgid "Add to firewall"
+msgstr ""
+
+msgid "Firewall"
+msgstr ""
+
+msgid "Open the Tailscale admin console"
 msgstr ""
 
 msgid "Installing the update; rsagent restarts by itself…"
@@ -230,9 +266,6 @@ msgid "Serial port"
 msgstr ""
 
 msgid "TCP port"
-msgstr ""
-
-msgid "State"
 msgstr ""
 
 msgid "Client"

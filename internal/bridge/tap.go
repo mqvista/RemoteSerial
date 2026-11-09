@@ -12,6 +12,7 @@ const (
 	DirRX    Dir = 0 // 串口 → 外（设备输出）
 	DirTX    Dir = 1 // TCP 客户端 → 串口
 	DirTXWeb Dir = 2 // 网页终端 → 串口
+	DirRXWeb Dir = 3 // 网页终端 → TCP 客户端（模拟设备输出）
 )
 
 // Chunk 是一次读写的数据，带方向与时间，供网页终端监看。

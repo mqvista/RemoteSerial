@@ -18,7 +18,7 @@ func TestPackageNames(t *testing.T) {
 		t.Errorf("opkg: %v, want %v", got, want)
 	}
 	got = packageNames("apk", "0.7.0-rc1", false)
-	if len(got) != 1 || got[0] != "rsagent-0.7.0_pre-r1_"+arch+".apk" {
+	if len(got) != 1 || got[0] != "rsagent-0.7.0_pre1-r1_"+arch+".apk" {
 		t.Errorf("apk: %v", got)
 	}
 	if packageNames("opkg", "dev", false) != nil {
