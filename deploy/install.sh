@@ -164,6 +164,13 @@ install_packages() {
         # tailscale 明确加入 world：之后移除 rsagent 时不会把路由器的 Tailscale 一起移除
         apk add --allow-untrusted tailscale $LOCAL || die "apk add failed"
     fi
+    # 已是同一版本或更新的版本时套件管理器什么都不做，不会执行安装后脚本：服务要自己重新启动
+    /etc/init.d/rsagent enable >/dev/null 2>&1 || true
+    /etc/init.d/rsagent start >/dev/null 2>&1 || true
+    case "$("$BIN" version 2>/dev/null)" in
+        "rsagent $V "*) ;;
+        *) say "note: rsagent $V was not installed because the installed package is the same or newer" ;;
+    esac
     return 0
 }
 
