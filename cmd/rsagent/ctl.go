@@ -37,9 +37,10 @@ const ctlUsage = `usage: rsagent ctl <op> [args] [--data-dir dir]
   console [--port N] [--lan=true|false]   show or change the console port and LAN access
   token                           one-time console login token (valid 60 s)
   password [--clear]              set the LAN password (read from stdin) or clear it
-  tailscale install|start|firewall   start a system Tailscale job; see tailscale-job
+  tailscale install|start|firewall|service   start a system Tailscale job; see tailscale-job
   tailscale-job                   progress of the last job
   tailscale-login                 start a browser login; the result has authURL
+  lang <code>                     use LuCI's current language when rsagent follows the system language
   update                          one-click update of a package install: check, download, install
   update-check                    check for a new version
   tailscale-authkey [--tags tag:a,tag:b]   log in with an auth key or OAuth client secret read from stdin`
@@ -217,14 +218,19 @@ func runCtl(args []string) (any, error) {
 		return c.call("PUT", "/api/session/password", map[string]string{"password": pw})
 	case "tailscale":
 		if len(rest) != 1 {
-			return nil, errors.New("usage: rsagent ctl tailscale install|start|firewall")
+			return nil, errors.New("usage: rsagent ctl tailscale install|start|firewall|service")
 		}
 		switch rest[0] {
-		case "install", "start", "firewall":
+		case "install", "start", "firewall", "service":
 		default:
 			return nil, fmt.Errorf("unknown tailscale action %q", rest[0])
 		}
 		return c.call("POST", "/api/tailscale/system/"+rest[0], nil)
+	case "lang":
+		if len(rest) != 1 {
+			return nil, errors.New("usage: rsagent ctl lang <code>, e.g. zh-tw or en")
+		}
+		return c.call("POST", "/api/language/follow", map[string]string{"lang": rest[0]})
 	case "update":
 		return c.call("POST", "/api/update/auto", nil)
 	case "update-check":

@@ -37,7 +37,7 @@ const showBackendSwitch = computed(() => isLocal.value && (isSystem.value || sta
 const sysStep = computed(() => {
   const s = snap.value?.state
   if (s === 'NotInstalled') return 'install'
-  if (s === 'NotRunning') return 'start'
+  if (s === 'NotRunning') return sys.value?.servicePackage ? 'service' : 'start'
   if (sys.value?.firewallZone === false) return 'firewall'
   return ''
 })
@@ -331,18 +331,23 @@ onUnmounted(() => {
             <template v-if="sys?.needMB && sys?.freeMB"><br />{{ t('tsp.space', { need: sys.needMB, free: sys.freeMB }) }}</template>
           </template>
           <template v-else-if="sysStep === 'start'">{{ t('tsp.notRunningHint') }}</template>
+          <template v-else-if="sysStep === 'service'">{{ t('tsp.noServiceHint', { pkg: sys?.servicePackage ?? '' }) }}</template>
           <template v-else>{{ t('tsp.firewallHint') }}</template>
         </NAlert>
         <NSpace align="center">
           <template v-if="sys?.canManage">
             <NButton v-if="sysStep === 'install'" type="primary" :loading="job?.running" @click="runSystem('install')">{{ t('tsp.install') }}</NButton>
             <NButton v-else-if="sysStep === 'start'" type="primary" :loading="job?.running" @click="runSystem('start')">{{ t('tsp.startService') }}</NButton>
+            <NButton v-else-if="sysStep === 'service'" type="primary" :loading="job?.running" @click="runSystem('service')">{{ t('tsp.installServicePkg', { pkg: sys?.servicePackage ?? '' }) }}</NButton>
             <NButton v-else type="primary" :loading="job?.running" @click="runSystem('firewall')">{{ t('tsp.fixFirewall') }}</NButton>
           </template>
           <NText v-else depth="3">{{ t('tsp.manualOnly') }}</NText>
         </NSpace>
         <div v-if="sysStep === 'install' && sys?.installCommand" class="hint">
           {{ t('tsp.manual') }} <code>{{ sys.installCommand }}</code>
+        </div>
+        <div v-else-if="sysStep === 'service' && sys?.serviceInstallCommand" class="hint">
+          {{ t('tsp.manual') }} <code>{{ sys.serviceInstallCommand }}</code>
         </div>
         <div v-else-if="sysStep === 'start'" class="hint">
           {{ t('tsp.manual') }} <code>/etc/init.d/tailscale enable && /etc/init.d/tailscale start</code>

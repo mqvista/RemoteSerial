@@ -3,7 +3,7 @@
 		"description": "Grant access to RemoteSerial (rsagent)",
 		"read": {
 			"ubus": {
-				"luci.rsagent": [ "status", "tailscale_job" ]
+				"luci.rsagent": [ "status", "tailscale_job", "lang" ]
 			}
 		},
 		"write": {

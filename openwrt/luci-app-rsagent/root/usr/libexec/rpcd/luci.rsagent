@@ -12,6 +12,7 @@ list)
 	cat <<'JSON'
 {
 	"status": {},
+	"lang": { "lang": "str" },
 	"service": { "action": "str" },
 	"bridge": { "id": "str", "action": "str" },
 	"bridge_add": { "device": "str", "name": "str", "baud": 0, "mode": "str", "tcpPort": 0, "matchUSB": false },
@@ -32,6 +33,11 @@ call)
 	[ -x "$BIN" ] || fail "rsagent is not installed ($BIN)"
 	case "$2" in
 	status) "$BIN" ctl status ;;
+	lang)
+		l=$(arg lang)
+		case "$l" in *[!A-Za-z_-]*|'') fail "invalid language" ;; esac
+		"$BIN" ctl lang "$l"
+		;;
 	service)
 		a=$(arg action)
 		case "$a" in start|stop|restart|enable|disable) ;; *) fail "invalid action" ;; esac
@@ -69,7 +75,7 @@ call)
 	token) "$BIN" ctl token ;;
 	tailscale)
 		a=$(arg action)
-		case "$a" in install|start|firewall) ;; *) fail "invalid action" ;; esac
+		case "$a" in install|start|firewall|service) ;; *) fail "invalid action" ;; esac
 		"$BIN" ctl tailscale "$a"
 		;;
 	tailscale_job) "$BIN" ctl tailscale-job ;;

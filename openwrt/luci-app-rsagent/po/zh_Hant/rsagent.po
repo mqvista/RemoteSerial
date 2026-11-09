@@ -67,6 +67,12 @@ msgstr "安裝 Tailscale"
 msgid "Only %d MB free on the overlay; about %d MB is needed."
 msgstr "overlay 只剩 %d MB，大約需要 %d MB。"
 
+msgid "Tailscale is installed, but this firmware's tailscale package has no init script (/etc/init.d/tailscale), so it cannot be started. On this firmware the init script comes with %s; install it and Tailscale is started and enabled at boot."
+msgstr "已安裝 Tailscale，但這個韌體的 tailscale 套件沒有服務腳本（/etc/init.d/tailscale），無法啟動。這類韌體的服務腳本由 %s 提供，安裝後會自動啟動 Tailscale 並設為開機啟動。"
+
+msgid "Install %s"
+msgstr "安裝 %s"
+
 msgid "Tailscale is installed but not running."
 msgstr "Tailscale 已安裝但未執行。"
 
@@ -114,6 +120,27 @@ msgstr "OAuth 用戶端密鑰至少需要一個標籤，例如 tag:serial-agent�
 
 msgid "Logging in… the state updates in a few seconds."
 msgstr "登入中…幾秒後狀態會更新。"
+
+msgid "Installing Tailscale"
+msgstr "安裝 Tailscale"
+
+msgid "Starting Tailscale"
+msgstr "啟動 Tailscale"
+
+msgid "Adding tailscale0 to a firewall zone"
+msgstr "把 tailscale0 加入防火牆區域"
+
+msgid "Installing the Tailscale service package"
+msgstr "安裝 Tailscale 服務套件"
+
+msgid "Running…"
+msgstr "執行中…"
+
+msgid "Done"
+msgstr "完成"
+
+msgid "Failed"
+msgstr "失敗"
 
 msgid "Stop"
 msgstr "停止"

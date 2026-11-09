@@ -11,7 +11,7 @@ import (
 
 // cmdTailscale 管理系统自带的 tailscale（OpenWrt），以及选择网络后端。
 func cmdTailscale(args []string) error {
-	const usageLine = "usage: rsagent tailscale status|install|start|firewall|backend <embedded|system> [options]"
+	const usageLine = "usage: rsagent tailscale status|install|start|firewall|service|backend <embedded|system> [options]"
 	if len(args) == 0 {
 		return fmt.Errorf(usageLine)
 	}
@@ -53,6 +53,8 @@ func cmdTailscale(args []string) error {
 		return systs.EnsureFirewall(ctx, os.Stdout)
 	case "firewall":
 		return systs.EnsureFirewall(ctx, os.Stdout)
+	case "service":
+		return systs.InstallService(ctx, os.Stdout)
 	case "backend":
 		if value != config.BackendEmbedded && value != config.BackendSystem {
 			return fmt.Errorf("backend must be %q or %q", config.BackendEmbedded, config.BackendSystem)

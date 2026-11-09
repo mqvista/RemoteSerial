@@ -111,6 +111,17 @@ verify() {
     return 0
 }
 
+# 部分厂商固件（如 Photonicat）的 tailscale 套件只有程序，服务脚本 /etc/init.d/tailscale 由 LuCI 的
+# Tailscale 应用 luci-app-tailscale-community 提供：缺少时一并安装，然后启动 tailscale。
+# 返回 1 表示不需要（已有服务脚本或没有 tailscale）。
+ensure_ts_service() {
+    [ -x /usr/sbin/tailscaled ] && [ ! -x /etc/init.d/tailscale ] || return 1
+    say "This firmware's tailscale package has no init script; installing luci-app-tailscale-community, which provides it"
+    "$BIN" tailscale service --data-dir "$DATA" \
+        || say "warning: could not set up the tailscale service; install luci-app-tailscale-community, then enable Tailscale in LuCI (VPN -> Tailscale)"
+    return 0
+}
+
 # ---------------------------------------------------------------- OpenWrt 套件
 # 下载并安装 .ipk / .apk。返回 1 表示这台路由器不适用套件（架构不符、找不到套件），改为直接安装文件。
 install_packages() {
@@ -176,6 +187,8 @@ install_packages() {
 
 if [ "$OPENWRT" = 1 ] && [ -z "${RSAGENT_FROM_FILE:-}" ] && [ "$PACKAGE" = yes ] && [ "$TAILSCALE" != no ] && install_packages; then
     say "Installed $("$BIN" version)"
+    # 套件的安装后脚本里不能再调用套件管理器，所以在这里补装
+    ensure_ts_service || true
     if [ -n "${RSAGENT_AUTH_KEY:-}" ]; then
         say "Joining the tailnet..."
         i=0
@@ -226,7 +239,7 @@ if [ "$OPENWRT" = 1 ]; then
     fi
     if [ -x /usr/sbin/tailscaled ]; then
         "$BIN" tailscale backend system --data-dir "$DATA" >/dev/null
-        "$BIN" tailscale start --data-dir "$DATA" || say "warning: could not start tailscale; see the Tailscale page in the console"
+        ensure_ts_service || "$BIN" tailscale start --data-dir "$DATA" || say "warning: could not start tailscale; see the Tailscale page in the console"
     elif [ "$TAILSCALE" = yes ]; then
         if "$BIN" tailscale install --data-dir "$DATA"; then
             "$BIN" tailscale backend system --data-dir "$DATA" >/dev/null

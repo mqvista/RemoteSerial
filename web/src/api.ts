@@ -38,11 +38,14 @@ export interface SystemTailscale {
   pkgManager?: string
   installCommand?: string
   canManage: boolean
+  servicePackage?: string
+  luciApp?: boolean
+  serviceInstallCommand?: string
   freeMB?: number
   needMB?: number
 }
 
-export type SystemAction = 'install' | 'start' | 'firewall'
+export type SystemAction = 'install' | 'start' | 'firewall' | 'service'
 
 export interface SystemJob {
   action?: SystemAction

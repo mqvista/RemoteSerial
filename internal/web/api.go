@@ -22,6 +22,7 @@ func (s *Server) routes() {
 	api.HandleFunc("GET /api/logs", s.handleLogs)
 	api.HandleFunc("GET /api/settings", s.handleSettingsGet)
 	api.HandleFunc("PUT /api/settings", s.handleSettingsPut)
+	api.HandleFunc("POST /api/language/follow", s.handleLanguageFollow)
 	api.HandleFunc("GET /api/network/interfaces", s.handleInterfaces)
 
 	api.HandleFunc("GET /api/tailscale/status", s.handleTailscaleStatus)
@@ -188,6 +189,35 @@ func (s *Server) handleUIShow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.deps.ShowUI()
 	writeJSON(w, http.StatusOK, map[string]string{"result": "shown"})
+}
+
+// POST /api/language/follow {"lang": "zh-tw"}：LuCI 页面打开时告诉 rsagent 它正在使用的语言。
+// 只在配置未指定语言（跟随系统）时切换，且不写入配置；只接受本机来源（rpcd 插件经 rsagent ctl 调用）。
+func (s *Server) handleLanguageFollow(w http.ResponseWriter, r *http.Request) {
+	if SourceOf(r) != SourceLocal {
+		writeError(w, http.StatusForbidden, i18n.T("仅限本机"))
+		return
+	}
+	var req struct {
+		Lang string `json:"lang"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, i18n.T("请求体格式错误"))
+		return
+	}
+	followed := false
+	if s.deps.Config.Language == "" {
+		l := i18n.Normalize(req.Lang)
+		if l == "" {
+			l = i18n.EN
+		}
+		if l != i18n.Current() {
+			i18n.SetLang(l)
+			s.hub.Notify()
+		}
+		followed = true
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"language": string(i18n.Current()), "followed": followed})
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, _ *http.Request) {

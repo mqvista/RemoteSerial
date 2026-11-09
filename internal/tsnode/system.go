@@ -235,6 +235,8 @@ func (n *Node) sysLoop(ctx context.Context, done chan struct{}) {
 		switch {
 		case !info.Installed && errors.Is(sockErr, os.ErrNotExist):
 			s, msg = StateNotInstalled, i18n.M("系统未安装 Tailscale")
+		case info.Installed && info.ServicePackage != "" && !info.DaemonRunning:
+			s, msg = StateNotRunning, i18n.M("这个固件的 tailscale 套件没有服务脚本，需要另外安装 %s", info.ServicePackage)
 		case !info.DaemonRunning || errors.Is(sockErr, os.ErrNotExist):
 			s, msg = StateNotRunning, i18n.M("系统 Tailscale 未运行")
 		default:

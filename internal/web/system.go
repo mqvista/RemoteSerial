@@ -53,9 +53,11 @@ var sysActions = map[string]func(context.Context, *sysJob) error{
 		return systs.EnsureFirewall(ctx, j)
 	},
 	"firewall": func(ctx context.Context, j *sysJob) error { return systs.EnsureFirewall(ctx, j) },
+	// tailscale 没有服务脚本时安装提供它的套件
+	"service": func(ctx context.Context, j *sysJob) error { return systs.InstallService(ctx, j) },
 }
 
-// POST /api/tailscale/system/{action}：install | start | firewall，后台执行，用 GET .../system/job 查看进度。
+// POST /api/tailscale/system/{action}：install | start | firewall | service，后台执行，用 GET .../system/job 查看进度。
 func (s *Server) handleSystemAction(w http.ResponseWriter, r *http.Request) {
 	action := r.PathValue("action")
 	fn, ok := sysActions[action]

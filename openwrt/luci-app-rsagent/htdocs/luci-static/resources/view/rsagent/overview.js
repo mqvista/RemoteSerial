@@ -10,6 +10,7 @@
 // plugin luci.rsagent, which calls "rsagent ctl"; rsagent's own config stays the only source of truth.
 
 var callStatus = rpc.declare({ object: 'luci.rsagent', method: 'status' });
+var callLang = rpc.declare({ object: 'luci.rsagent', method: 'lang', params: [ 'lang' ] });
 var callService = rpc.declare({ object: 'luci.rsagent', method: 'service', params: [ 'action' ] });
 var callBridge = rpc.declare({ object: 'luci.rsagent', method: 'bridge', params: [ 'id', 'action' ] });
 var callConsole = rpc.declare({ object: 'luci.rsagent', method: 'console', params: [ 'port', 'lan' ] });
@@ -90,7 +91,12 @@ function row(label, value) {
 
 return view.extend({
 	load: function() {
-		return callStatus().catch(function(e) { return { error: String(e) }; });
+		// rsagent follows LuCI's language unless one is chosen in its own console, so its messages match this page
+		// The theme puts LuCI's current language on <html lang> (e.g. zh-tw), also when it is "auto"
+		var lang = document.documentElement.getAttribute('lang') || 'en';
+		return callLang(lang).catch(function() {}).then(function() {
+			return callStatus();
+		}).catch(function(e) { return { error: String(e) }; });
 	},
 
 	// ---------------------------------------------------------------- Tailscale setup
@@ -124,6 +130,15 @@ return view.extend({
 				body.push(E('p', { 'class': 'alert-message warning' }, _('Only %d MB free on the overlay; about %d MB is needed.').format(sys.freeMB, sys.needMB)));
 			break;
 		case 'NotRunning':
+			if (sys.servicePackage) {
+				// Some vendor firmwares ship tailscale without /etc/init.d/tailscale; another package provides it
+				body.push(E('p', {}, _('Tailscale is installed, but this firmware\'s tailscale package has no init script (/etc/init.d/tailscale), so it cannot be started. On this firmware the init script comes with %s; install it and Tailscale is started and enabled at boot.').format(sys.servicePackage)));
+				if (sys.canManage)
+					buttons.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'runTailscale', 'service') }, _('Install %s').format(sys.servicePackage)));
+				if (sys.serviceInstallCommand)
+					body.push(E('p', {}, [ _('Or run on the router:'), ' ', E('code', {}, txt(sys.serviceInstallCommand)) ]));
+				break;
+			}
 			body.push(E('p', {}, _('Tailscale is installed but not running.')));
 			buttons.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'runTailscale', 'start') }, _('Start Tailscale and enable at boot')));
 			break;
@@ -145,13 +160,11 @@ return view.extend({
 			body.push(E('p', {}, _('Tailscale is not ready.')));
 		}
 
-		var log = E('pre', { 'id': 'rsagent-job', 'style': 'display:none;max-height:240px;overflow:auto;white-space:pre-wrap' });
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('Set up Tailscale') + ' — ' + stateLabel(ts.state)),
 			detail,
 			E('div', {}, body),
-			buttons.length ? E('p', {}, buttons) : '',
-			log
+			buttons.length ? E('p', {}, buttons) : ''
 		]);
 	},
 
@@ -202,20 +215,45 @@ return view.extend({
 		}).catch(notifyError);
 	},
 
+	// The job box is created once in render() and lives outside the sections that the 5 s refresh
+	// rebuilds, so it neither flickers nor disappears when the job ends; it keeps the last result.
+	showJob: function(job) {
+		if (!job || !job.action)
+			return;
+		var titles = {
+			install: _('Installing Tailscale'),
+			start: _('Starting Tailscale'),
+			firewall: _('Adding tailscale0 to a firewall zone'),
+			service: _('Installing the Tailscale service package')
+		};
+		var state = job.running ? E('em', {}, _('Running…'))
+			: job.ok ? E('span', { 'style': 'color:#4caf50' }, _('Done'))
+			: E('span', { 'style': 'color:#e53935' }, [ _('Failed'), ': ', String(job.error || '') ]);
+		dom.content(this.jobHead, [ E('strong', {}, titles[job.action] || job.action), ' — ', state ]);
+		this.jobNode.style.display = '';
+		var pre = this.jobLog;
+		if (pre.textContent !== (job.log || ''))
+			pre.textContent = job.log || '';
+		// Scroll after layout so the newest lines are visible
+		pre.scrollTop = pre.scrollHeight;
+		window.requestAnimationFrame(function() { pre.scrollTop = pre.scrollHeight; });
+	},
+
 	followJob: function() {
 		var self = this;
-		return callTailscaleJob().then(checked).then(function(job) {
-			var pre = document.getElementById('rsagent-job');
-			if (pre) {
-				pre.style.display = '';
-				pre.textContent = job.log || '';
-				pre.scrollTop = pre.scrollHeight;
-			}
+		// A job carries its own "error" when it fails, so only a reply without a job is a failed call
+		return callTailscaleJob().then(function(job) {
+			if (job && job.error && !job.action)
+				throw new Error(job.error);
+			return job;
+		}).then(function(job) {
+			self.showJob(job);
 			if (job.running)
 				return new Promise(function(resolve) { window.setTimeout(resolve, 1500); }).then(function() { return self.followJob(); });
 			if (job.error)
 				notifyError(job.error);
-			return self.refresh();
+			// The banner and refresh change the layout above; scroll the log to its end afterwards
+			return self.refresh().then(function() { self.showJob(job); });
 		});
 	},
 
@@ -578,6 +616,15 @@ return view.extend({
 		this.bridgesNode = E('div');
 		this.settingsNode = E('div');
 		this.portsNode = E('div');
+		this.jobHead = E('p');
+		// No wrapping: the height then depends only on the line count, so "scrolled to the end" stays true when the page width changes
+		this.jobLog = E('pre', { 'style': 'max-height:240px;overflow:auto;white-space:pre;margin:0' });
+		this.jobNode = E('div', { 'class': 'cbi-section', 'style': 'display:none' }, [ this.jobHead, this.jobLog ]);
+		// Pick up a job that is still running, e.g. after reloading the page
+		callTailscaleJob().then(L.bind(function(job) {
+			if (job && job.action && job.running)
+				return this.followJob();
+		}, this)).catch(function() {});
 		this.keyInput = E('input', { 'type': 'password', 'class': 'cbi-input-password', 'autocomplete': 'off', 'placeholder': 'tskey-…', 'style': 'width:100%;max-width:32em' });
 		this.tagsInput = E('input', { 'class': 'cbi-input-text', 'placeholder': 'tag:serial-agent', 'style': 'width:100%;max-width:32em' });
 		this.update(st, true);
@@ -588,6 +635,7 @@ return view.extend({
 			E('h2', {}, _('RemoteSerial')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Serial-to-TCP bridges over Tailscale. This page covers the basics; use the console for editing bridges, the terminal, captures and logs.')),
 			this.tsNode,
+			this.jobNode,
 			this.statusNode,
 			this.bridgesNode,
 			this.portsNode,

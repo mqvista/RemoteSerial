@@ -32,16 +32,25 @@ type Info struct {
 	FirewallZone   *bool  `json:"firewallZone,omitempty"` // OpenWrt：tailscale0 已加入防火墙区域
 	PkgManager     string `json:"pkgManager,omitempty"`   // opkg | apk
 	InstallCommand string `json:"installCommand,omitempty"`
-	CanManage      bool   `json:"canManage"`        // 本程序可直接安装、启动（OpenWrt 且为 root）
-	FreeMB         int    `json:"freeMB,omitempty"` // 安装位置的剩余空间
-	NeedMB         int    `json:"needMB,omitempty"` // 安装所需的大致空间
+	CanManage      bool   `json:"canManage"` // 本程序可直接安装、启动（OpenWrt 且为 root）
+	// 已安装 luci-app-tailscale-community：它每次应用设置都会用自己的子网路由列表覆盖现有设置
+	LuciApp bool `json:"luciApp,omitempty"`
+	// 已安装 tailscale 却没有服务脚本时，需要另外安装的套件与命令
+	ServicePackage        string `json:"servicePackage,omitempty"`
+	ServiceInstallCommand string `json:"serviceInstallCommand,omitempty"`
+	FreeMB                int    `json:"freeMB,omitempty"` // 安装位置的剩余空间
+	NeedMB                int    `json:"needMB,omitempty"` // 安装所需的大致空间
 }
 
-const (
-	initScript = "/etc/init.d/tailscale"
-	// 套件约 10MB 压缩、展开后二十多 MB，按 35MB 预留，留出套件索引与余量。
-	needMB = 35
-)
+// 套件约 10MB 压缩、展开后二十多 MB，按 35MB 预留，留出套件索引与余量。
+const needMB = 35
+
+// ServicePackage 在部分厂商固件（如 Photonicat）上提供 tailscale 的服务脚本：
+// 这些固件的 tailscale 套件只有程序，/etc/init.d/tailscale 由 LuCI 的 Tailscale 应用提供。
+const ServicePackage = "luci-app-tailscale-community"
+
+// 测试时替换。
+var initScript = "/etc/init.d/tailscale"
 
 // Runner 执行命令并把输出写到 out；测试时替换。
 var Runner = func(ctx context.Context, out io.Writer, name string, args ...string) error {
@@ -86,11 +95,15 @@ func Detect(socket string) Info {
 	zone := HasFirewallZone(ctx)
 	info.FirewallZone = &zone
 	info.PkgManager = platform.PkgManager()
+	info.LuciApp = platform.PackageInstalled(ServicePackage) != ""
 	info.InstallCommand = platform.InstallCommand(info.PkgManager, "tailscale")
 	info.CanManage = os.Geteuid() == 0 && info.PkgManager != ""
 	if !info.Installed {
 		info.NeedMB = needMB
 		info.FreeMB = freeMB(installRoot())
+	} else if !info.ServiceScript {
+		info.ServicePackage = ServicePackage
+		info.ServiceInstallCommand = platform.InstallCommand(info.PkgManager, ServicePackage)
 	}
 	return info
 }
@@ -162,6 +175,57 @@ func Install(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return i18n.Errorf("安装 tailscale 失败: %w", err)
 	}
+	// 部分厂商固件的 tailscale 套件不带服务脚本，一并安装提供它的套件
+	if _, err := os.Stat(initScript); err != nil {
+		if err := installPackage(ctx, out, mgr, ServicePackage); err != nil {
+			return err
+		}
+	}
+	if err := StartService(ctx, out); err != nil {
+		return err
+	}
+	return EnsureFirewall(ctx, out)
+}
+
+func installPackage(ctx context.Context, out io.Writer, mgr, name string) error {
+	step(out, i18n.Sprintf("安装 %s", name))
+	var err error
+	if mgr == "apk" {
+		err = Runner(ctx, out, "apk", "add", name)
+	} else {
+		err = Runner(ctx, out, "opkg", "install", name)
+	}
+	if err != nil {
+		return i18n.Errorf("安装 %s 失败: %w", name, err)
+	}
+	return nil
+}
+
+// InstallService 为没有服务脚本的 tailscale 安装 ServicePackage，然后启动 tailscale 并配置防火墙。
+func InstallService(ctx context.Context, out io.Writer) error {
+	if err := requireManage(); err != nil {
+		return err
+	}
+	mgr := platform.PkgManager()
+	if mgr == "" {
+		return i18n.New("找不到套件管理器（opkg 或 apk）")
+	}
+	step(out, i18n.T("更新套件列表"))
+	var err error
+	if mgr == "apk" {
+		err = Runner(ctx, out, "apk", "update")
+	} else {
+		err = Runner(ctx, out, "opkg", "update")
+	}
+	if err != nil {
+		return i18n.Errorf("更新套件列表失败（请检查路由器能否连网）: %w", err)
+	}
+	if err := installPackage(ctx, out, mgr, ServicePackage); err != nil {
+		return err
+	}
+	if _, err := os.Stat(initScript); err != nil {
+		return i18n.Errorf("已安装 %s，但仍然没有 %s", ServicePackage, initScript)
+	}
 	if err := StartService(ctx, out); err != nil {
 		return err
 	}
@@ -174,7 +238,21 @@ func StartService(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	if _, err := os.Stat(initScript); err != nil {
+		if Detect("").Installed {
+			return i18n.Errorf("这个固件的 tailscale 套件没有服务脚本 %s，需要另外安装 %s（安装命令：%s）",
+				initScript, ServicePackage, platform.InstallCommand(platform.PkgManager(), ServicePackage))
+		}
 		return i18n.Errorf("找不到 %s，tailscale 套件可能未安装完整", initScript)
+	}
+	// luci-app-tailscale-community 用 tailscale.settings.service_enabled 控制服务，为 0 时它会把 tailscale 停掉
+	if v, err := output(ctx, "uci", "-q", "get", "tailscale.settings.service_enabled"); err == nil && strings.TrimSpace(v) == "0" {
+		step(out, i18n.T("在 Tailscale 设置中启用服务（tailscale.settings.service_enabled）"))
+		if err := Runner(ctx, out, "uci", "set", "tailscale.settings.service_enabled=1"); err != nil {
+			return i18n.Errorf("启用 Tailscale 服务设置失败: %w", err)
+		}
+		if err := Runner(ctx, out, "uci", "commit", "tailscale"); err != nil {
+			return i18n.Errorf("启用 Tailscale 服务设置失败: %w", err)
+		}
 	}
 	step(out, i18n.T("设为开机启动并启动 tailscale"))
 	if err := Runner(ctx, out, initScript, "enable"); err != nil {
@@ -182,6 +260,20 @@ func StartService(ctx context.Context, out io.Writer) error {
 	}
 	if err := Runner(ctx, out, initScript, "start"); err != nil {
 		return i18n.Errorf("启动 tailscale 失败: %w", err)
+	}
+	// 有的固件的服务脚本还要看自己的设置，start 成功也不一定真的启动：确认 tailscaled 起来了
+	for i := 0; i < 10 && !processRunning("tailscaled"); i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+	if !processRunning("tailscaled") {
+		if platform.PackageInstalled(ServicePackage) != "" {
+			return i18n.New("tailscale 没有启动：请到 LuCI 的「VPN → Tailscale」页面勾选「Enable Tailscale Service」后保存，再回到这里")
+		}
+		return i18n.New("tailscale 没有启动，请用 logread -e tailscale 查看原因")
 	}
 	return nil
 }

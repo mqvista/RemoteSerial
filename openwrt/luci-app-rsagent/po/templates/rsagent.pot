@@ -64,6 +64,12 @@ msgstr ""
 msgid "Only %d MB free on the overlay; about %d MB is needed."
 msgstr ""
 
+msgid "Tailscale is installed, but this firmware's tailscale package has no init script (/etc/init.d/tailscale), so it cannot be started. On this firmware the init script comes with %s; install it and Tailscale is started and enabled at boot."
+msgstr ""
+
+msgid "Install %s"
+msgstr ""
+
 msgid "Tailscale is installed but not running."
 msgstr ""
 
@@ -110,6 +116,27 @@ msgid "An OAuth client secret needs at least one tag, e.g. tag:serial-agent."
 msgstr ""
 
 msgid "Logging in… the state updates in a few seconds."
+msgstr ""
+
+msgid "Installing Tailscale"
+msgstr ""
+
+msgid "Starting Tailscale"
+msgstr ""
+
+msgid "Adding tailscale0 to a firewall zone"
+msgstr ""
+
+msgid "Installing the Tailscale service package"
+msgstr ""
+
+msgid "Running…"
+msgstr ""
+
+msgid "Done"
+msgstr ""
+
+msgid "Failed"
 msgstr ""
 
 msgid "Stop"

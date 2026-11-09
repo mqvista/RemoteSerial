@@ -15,6 +15,8 @@ const ifaces = ref<InterfaceInfo[]>([])
 const showHidden = ref(false)
 const busy = ref(false)
 
+// 系统 Tailscale 由 luci-app-tailscale-community 管理时，它保存设置会用自己的子网路由列表覆盖这里的设置
+const luciManaged = computed(() => status.value?.tailscale.backend === 'system' && !!status.value?.tailscale.system?.luciApp)
 const nodeRunning = computed(() => status.value?.tailscale.state === 'Running')
 const dirty = computed(() => JSON.stringify(routes.value.filter(Boolean)) !== JSON.stringify(saved.value.advertised))
 const visibleIfaces = computed(() => ifaces.value.filter((i) => showHidden.value || !i.hidden))
@@ -60,6 +62,7 @@ onMounted(load)
 
 <template>
   <NSpace vertical :size="16">
+    <NAlert v-if="luciManaged" type="warning">{{ t('routes.luciManaged') }}</NAlert>
     <NAlert type="info">{{ t('routes.intro') }}</NAlert>
 
     <NCard :title="t('routes.advertised')">
