@@ -39,10 +39,6 @@ func (s *Server) handleUpdateDownload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, i18n.T("本进程不支持更新"))
 		return
 	}
-	if st := s.deps.Updater.Status(); st.PackageManager != "" {
-		writeError(w, http.StatusConflict, i18n.Sprintf("rsagent 由 %s 安装，请用套件管理器升级：%s", st.PackageManager, st.UpgradeCommand))
-		return
-	}
 	// 下载不绑定请求的 context，请求结束后继续。
 	if err := s.deps.Updater.StartDownload(context.Background()); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
@@ -83,7 +79,15 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if st := s.deps.Updater.Status(); st.PackageManager != "" {
-		writeError(w, http.StatusConflict, i18n.Sprintf("rsagent 由 %s 安装，请用套件管理器升级：%s", st.PackageManager, st.UpgradeCommand))
+		if err := s.deps.Updater.ApplyPackages(); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		s.deps.Log.Info(i18n.T("应用更新"), "version", st.Downloaded.Version, "manager", st.PackageManager, "by", requesterLabel(r))
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"result": deploy.Result{Action: deploy.ActionUpdateApply, OK: true, Time: time.Now(),
+				Message: i18n.Sprintf("正在用 %s 安装新版本，rsagent 会自动重新启动，界面稍后自动恢复。", st.PackageManager)},
+		})
 		return
 	}
 	st := s.deps.Updater.Status()
@@ -156,4 +160,48 @@ func (s *Server) handleUIQuit(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(300 * time.Millisecond)
 		s.deps.Quit()
 	}()
+}
+
+// POST /api/update/auto：一键更新（套件安装时使用，LuCI 页面调用）：在后台依次检查、下载、交给套件管理器安装。
+// 立即返回，进度看 GET /api/update/status 的 checking / downloading / installing。
+func (s *Server) handleUpdateAuto(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Updater == nil {
+		writeError(w, http.StatusNotFound, i18n.T("本进程不支持更新"))
+		return
+	}
+	u := s.deps.Updater
+	st := u.Status()
+	if st.PackageManager == "" {
+		writeError(w, http.StatusConflict, i18n.T("一键更新只用于套件安装的 OpenWrt，请在管理界面的“部署”页更新"))
+		return
+	}
+	if st.Checking || st.Downloading || st.Installing {
+		writeError(w, http.StatusConflict, i18n.T("更新正在进行中"))
+		return
+	}
+	by := requesterLabel(r)
+	s.deps.Log.Info(i18n.T("开始一键更新"), "by", by)
+	go func() {
+		ctx := context.Background()
+		st, err := u.Check(ctx)
+		if err != nil || !st.Available {
+			return
+		}
+		if st.Downloaded == nil || st.Downloaded.Version != st.Latest.Version {
+			if err := u.StartDownload(ctx); err != nil {
+				return
+			}
+			for u.Status().Downloading {
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+		if d := u.Status().Downloaded; d == nil || d.Version != st.Latest.Version {
+			return
+		}
+		if err := u.ApplyPackages(); err != nil {
+			u.SetError(err)
+			s.deps.Log.Warn(i18n.T("应用更新失败"), "err", err)
+		}
+	}()
+	writeJSON(w, http.StatusAccepted, st)
 }

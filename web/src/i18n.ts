@@ -350,7 +350,9 @@ const en = {
   'deploy.bootEnabled': 'Starts at boot',
   'deploy.bootDisabled': 'Not started at boot',
   'deploy.packaged': 'Installed with {m}',
-  'deploy.pkgUpgrade': 'rsagent was installed with {m}. Upgrade it with the package manager:',
+  'deploy.pkgUpgrade': 'rsagent was installed with {m}. Applying the update hands the new package to {m}. You can also run this on the router:',
+  'deploy.pkgInstalling': '{m} is installing the new version. rsagent restarts by itself and this page reconnects.',
+  'deploy.pkgApplyConfirm': 'The new package is installed with {m} and rsagent restarts. The connection drops for a few seconds and then recovers.',
   'deploy.macos':
     'Running on macOS. The menu bar icon and window come from RemoteSerial Agent.app; choose how it starts under \"Startup\" below. To run core at boot without anyone logging in, install the system service below: it runs as the owner of the data directory (your account), and installing or controlling it shows the system administrator prompt on this Mac. While core runs as a service, do this from the RemoteSerial Agent window on this Mac. Updates replace the whole .app. Scheduled tasks, firewall rules and WebView2 are Windows-only.',
   'deploy.unix': 'Running on {os}. There is no desktop tray here; use "System service" below to register core as a systemd service. Scheduled tasks, firewall rules and WebView2 are Windows-only.',
@@ -814,7 +816,9 @@ const zhTWMessages: Messages = {
   'deploy.bootEnabled': '開機自動啟動',
   'deploy.bootDisabled': '未設開機啟動',
   'deploy.packaged': '由 {m} 安裝',
-  'deploy.pkgUpgrade': 'rsagent 由 {m} 安裝，請用套件管理器升級：',
+  'deploy.pkgUpgrade': 'rsagent 由 {m} 安裝，套用更新時會把新套件交給 {m} 安裝。也可以在路由器上執行：',
+  'deploy.pkgInstalling': '{m} 正在安裝新版本，rsagent 會自動重新啟動，此頁稍後自動恢復。',
+  'deploy.pkgApplyConfirm': '新套件會交給 {m} 安裝，rsagent 隨後重新啟動，連線會中斷幾秒後自動恢復。',
   'deploy.macos':
     '目前為 macOS。選單列圖示與視窗由 RemoteSerial Agent 應用程式提供；啟動方式可在下方「啟動方式」中選擇。若要不依賴使用者登入、開機即執行核心程式，可安裝下方的系統服務：服務以資料目錄的擁有者（你的帳號）身分執行，安裝與控制時會在這台 Mac 上跳出系統的管理員授權視窗；核心程式以服務執行時，請在這台 Mac 的 RemoteSerial Agent 視窗中操作。更新時會替換整個應用程式。排程工作、防火牆規則與 WebView2 僅適用於 Windows。',
   'deploy.unix': '目前為 {os}，沒有桌面系統匣；請用下方「系統服務」把核心程式註冊為 systemd 服務。排程工作、防火牆規則與 WebView2 僅適用於 Windows。',

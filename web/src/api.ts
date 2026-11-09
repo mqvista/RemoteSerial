@@ -269,6 +269,7 @@ export interface UpdateStatus {
   error?: string
   packageManager?: string // OpenWrt 上由套件管理器安装时为 opkg | apk，不在程序内替换
   upgradeCommand?: string
+  installing?: boolean
 }
 
 export interface SettingsUpdate {

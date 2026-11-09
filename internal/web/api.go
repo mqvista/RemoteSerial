@@ -58,6 +58,7 @@ func (s *Server) routes() {
 	api.HandleFunc("POST /api/update/cancel", s.handleUpdateCancel)
 	api.HandleFunc("DELETE /api/update/downloaded", s.handleUpdateClear)
 	api.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
+	api.HandleFunc("POST /api/update/auto", s.handleUpdateAuto)
 	api.HandleFunc("GET /api/deploy/status", s.handleDeployStatus)
 	api.HandleFunc("POST /api/deploy/{action}", s.handleDeployAction)
 

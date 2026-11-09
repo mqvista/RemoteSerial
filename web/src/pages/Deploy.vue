@@ -264,21 +264,23 @@ watch(connected, (c, old) => {
       <NText v-if="upd?.downloaded && !upd.downloading" depth="3" style="display: block; margin-top: 8px; font-size: 12px">
         {{ t('deploy.downloaded', { v: upd.downloaded.version, size: formatBytes(upd.downloaded.size) }) }}
       </NText>
-      <div v-if="upd?.packageManager" style="margin-top: 12px">
-        <NText depth="3" style="font-size: 12px">{{ t('deploy.pkgUpgrade', { m: upd.packageManager }) }}</NText>
-        <pre class="notes">{{ upd.upgradeCommand }}</pre>
-      </div>
-      <NSpace v-else style="margin-top: 12px">
+      <NAlert v-if="upd?.installing" type="info" style="margin-top: 12px">{{ t('deploy.pkgInstalling', { m: upd.packageManager ?? '' }) }}</NAlert>
+      <NSpace style="margin-top: 12px">
         <NButton v-if="canDownload" type="primary" @click="updateDownload">{{ t('deploy.downloadV', { v: upd?.latest?.version ?? '' }) }}</NButton>
         <NButton v-if="upd?.downloading" @click="updateCancel">{{ t('deploy.cancelDownload') }}</NButton>
         <NPopconfirm v-if="upd?.downloaded && !upd.downloading" @positive-click="updateApply">
           <template #trigger>
             <NButton type="primary" :loading="busy === 'update-apply'">{{ t('deploy.applyV', { v: upd!.downloaded!.version }) }}</NButton>
           </template>
-          {{ t('deploy.applyConfirm', { what: st?.mode === 'service' ? t('deploy.whatService') : t('deploy.whatProgram') }) }}{{ needsUAC ? t('deploy.applyUAC') : '' }}{{ t('deploy.continue') }}
+          <template v-if="upd?.packageManager">{{ t('deploy.pkgApplyConfirm', { m: upd.packageManager }) }}</template>
+          <template v-else>{{ t('deploy.applyConfirm', { what: st?.mode === 'service' ? t('deploy.whatService') : t('deploy.whatProgram') }) }}{{ needsUAC ? t('deploy.applyUAC') : '' }}</template>{{ t('deploy.continue') }}
         </NPopconfirm>
         <NButton v-if="upd?.downloaded && !upd.downloading" @click="updateClear">{{ t('deploy.deleteDownloaded') }}</NButton>
       </NSpace>
+      <div v-if="upd?.packageManager" style="margin-top: 12px">
+        <NText depth="3" style="font-size: 12px">{{ t('deploy.pkgUpgrade', { m: upd.packageManager }) }}</NText>
+        <pre class="notes">{{ upd.upgradeCommand }}</pre>
+      </div>
     </NCard>
 
     <NCard v-if="st?.task.supported" :title="t('deploy.task')">

@@ -40,6 +40,8 @@ const ctlUsage = `usage: rsagent ctl <op> [args] [--data-dir dir]
   tailscale install|start|firewall   start a system Tailscale job; see tailscale-job
   tailscale-job                   progress of the last job
   tailscale-login                 start a browser login; the result has authURL
+  update                          one-click update of a package install: check, download, install
+  update-check                    check for a new version
   tailscale-authkey [--tags tag:a,tag:b]   log in with an auth key or OAuth client secret read from stdin`
 
 type ctlClient struct {
@@ -223,6 +225,10 @@ func runCtl(args []string) (any, error) {
 			return nil, fmt.Errorf("unknown tailscale action %q", rest[0])
 		}
 		return c.call("POST", "/api/tailscale/system/"+rest[0], nil)
+	case "update":
+		return c.call("POST", "/api/update/auto", nil)
+	case "update-check":
+		return c.call("POST", "/api/update/check", nil)
 	case "tailscale-job":
 		return c.call("GET", "/api/tailscale/system/job", nil)
 	case "tailscale-login":
@@ -287,6 +293,9 @@ func ctlStatus(c *ctlClient) any {
 	}
 	if con, err := c.call("GET", "/api/console", nil); err == nil {
 		out["console"] = con
+	}
+	if upd, err := c.call("GET", "/api/update/status", nil); err == nil {
+		out["update"] = upd
 	}
 	return out
 }

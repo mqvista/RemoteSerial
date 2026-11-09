@@ -20,6 +20,8 @@ var callTailscaleLogin = rpc.declare({ object: 'luci.rsagent', method: 'tailscal
 var callAuthKey = rpc.declare({ object: 'luci.rsagent', method: 'tailscale_authkey', params: [ 'authKey', 'tags' ] });
 var callBridgeAdd = rpc.declare({ object: 'luci.rsagent', method: 'bridge_add', params: [ 'device', 'name', 'baud', 'mode', 'tcpPort', 'matchUSB' ] });
 var callBridgeRemove = rpc.declare({ object: 'luci.rsagent', method: 'bridge_remove', params: [ 'id' ] });
+var callUpdate = rpc.declare({ object: 'luci.rsagent', method: 'update' });
+var callUpdateCheck = rpc.declare({ object: 'luci.rsagent', method: 'update_check' });
 
 var BAUDS = [ 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 ];
 
@@ -75,8 +77,8 @@ function txt(s) {
 	return [ s == null ? '' : String(s) ];
 }
 
-function badge(text, ok) {
-	return E('span', { 'class': 'label', 'style': 'background:' + (ok ? '#4caf50' : '#9e9e9e') + ';color:#fff;padding:1px 6px;border-radius:3px' }, txt(text));
+function badge(text, ok, color) {
+	return E('span', { 'class': 'label', 'style': 'background:' + (color || (ok ? '#4caf50' : '#9e9e9e')) + ';color:#fff;padding:1px 6px;border-radius:3px' }, txt(text));
 }
 
 function row(label, value) {
@@ -258,7 +260,7 @@ return view.extend({
 
 		var rows = [
 			row(_('Service'), E('div', {}, svcText.concat([ E('div', { 'style': 'margin-top:6px' }, svcButtons) ]))),
-			row(_('Version'), running ? (s.version || '-') : '-'),
+			row(_('Version'), E('div', {}, this.renderVersion(st))),
 			row(_('Tailscale'), E('div', {}, tsText)),
 			row(_('Console'), E('div', {}, this.renderOpen(st)))
 		];
@@ -269,6 +271,52 @@ return view.extend({
 			E('h3', {}, _('Status')),
 			E('table', { 'class': 'table' }, rows)
 		]);
+	},
+
+	// Version and one-click update. A package install is upgraded by rsagent itself: it downloads the new
+	// .ipk / .apk and hands it to opkg / apk, which restarts rsagent.
+	renderVersion: function(st) {
+		var s = st.status || {}, u = st.update;
+		if (!st.running)
+			return [ '-' ];
+		var out = [ E('span', {}, txt(s.version || '-')), ' ' ];
+		if (!u)
+			return out;
+		if (u.installing) {
+			out.push(badge(_('Installing the update; rsagent restarts by itself…'), true, '#2196f3'));
+		} else if (u.downloading) {
+			var pct = u.total ? Math.floor(u.received * 100 / u.total) : 0;
+			out.push(badge(_('Downloading the update… %d%%').format(pct), true, '#2196f3'));
+		} else if (u.checking) {
+			out.push(E('em', {}, _('Checking for updates…')));
+		} else if (u.available && u.latest) {
+			out.push(badge(_('New version %s').format(u.latest.version), false, '#ff9800'), ' ');
+			if (u.packageManager)
+				out.push(E('button', { 'class': 'cbi-button cbi-button-apply', 'click': ui.createHandlerFn(this, 'updateNow', u.latest.version) }, _('Update')));
+			else
+				out.push(E('span', { 'style': 'opacity:.8' }, _('Update it on the Deploy page of the console.')));
+		} else {
+			out.push(E('button', { 'class': 'cbi-button', 'click': ui.createHandlerFn(this, 'checkUpdate') }, _('Check for updates')));
+			if (u.latest && !u.available)
+				out.push(' ', E('span', { 'style': 'opacity:.8' }, _('Up to date')));
+		}
+		if (u.error)
+			out.push(E('div', { 'style': 'color:#e53935;margin-top:4px' }, txt(u.error)));
+		return out;
+	},
+
+	updateNow: function(version) {
+		var self = this;
+		if (!window.confirm(_('Update RemoteSerial to %s? rsagent restarts during the update; bridges reconnect afterwards.').format(version)))
+			return;
+		return callUpdate().then(checked).then(function() {
+			return new Promise(function(resolve) { window.setTimeout(resolve, 1000); });
+		}).then(function() { return self.refresh(); }).catch(notifyError);
+	},
+
+	checkUpdate: function() {
+		var self = this;
+		return callUpdateCheck().then(checked).then(function() { return self.refresh(); }).catch(notifyError);
 	},
 
 	renderOpen: function(st) {

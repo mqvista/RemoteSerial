@@ -154,6 +154,33 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
+msgid "Installing the update; rsagent restarts by itself…"
+msgstr ""
+
+msgid "Downloading the update… %d%%"
+msgstr ""
+
+msgid "Checking for updates…"
+msgstr ""
+
+msgid "New version %s"
+msgstr ""
+
+msgid "Update"
+msgstr ""
+
+msgid "Update it on the Deploy page of the console."
+msgstr ""
+
+msgid "Check for updates"
+msgstr ""
+
+msgid "Up to date"
+msgstr ""
+
+msgid "Update RemoteSerial to %s? rsagent restarts during the update; bridges reconnect afterwards."
+msgstr ""
+
 msgid "Start the service to open the console."
 msgstr ""
 

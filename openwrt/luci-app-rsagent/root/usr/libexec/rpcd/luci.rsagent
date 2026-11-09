@@ -21,6 +21,8 @@ list)
 	"tailscale": { "action": "str" },
 	"tailscale_job": {},
 	"tailscale_login": {},
+	"update": {},
+	"update_check": {},
 	"tailscale_authkey": { "authKey": "str", "tags": "str" }
 }
 JSON
@@ -71,6 +73,8 @@ call)
 		"$BIN" ctl tailscale "$a"
 		;;
 	tailscale_job) "$BIN" ctl tailscale-job ;;
+	update) "$BIN" ctl update ;;
+	update_check) "$BIN" ctl update-check ;;
 	tailscale_login) "$BIN" ctl tailscale-login ;;
 	tailscale_authkey)
 		# the key goes to rsagent on stdin, never on a command line

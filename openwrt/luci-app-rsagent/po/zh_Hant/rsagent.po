@@ -157,6 +157,33 @@ msgstr "管理介面"
 msgid "Status"
 msgstr "狀態"
 
+msgid "Installing the update; rsagent restarts by itself…"
+msgstr "正在安裝更新，rsagent 會自動重新啟動…"
+
+msgid "Downloading the update… %d%%"
+msgstr "正在下載更新… %d%%"
+
+msgid "Checking for updates…"
+msgstr "正在檢查更新…"
+
+msgid "New version %s"
+msgstr "新版本 %s"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Update it on the Deploy page of the console."
+msgstr "請到管理介面的「部署」頁更新。"
+
+msgid "Check for updates"
+msgstr "檢查更新"
+
+msgid "Up to date"
+msgstr "已是最新版本"
+
+msgid "Update RemoteSerial to %s? rsagent restarts during the update; bridges reconnect afterwards."
+msgstr "把 RemoteSerial 更新到 %s？更新時 rsagent 會重新啟動，橋接之後會自動重新連線。"
+
 msgid "Start the service to open the console."
 msgstr "啟動服務後才能開啟管理介面。"
 

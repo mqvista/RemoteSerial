@@ -31,7 +31,8 @@ type Manifest struct {
 	Version     string           `json:"version"`
 	Notes       string           `json:"notes,omitempty"`
 	PublishedAt string           `json:"publishedAt,omitempty"`
-	Assets      map[string]Asset `json:"assets"` // 键为 GOOS-GOARCH，如 windows-amd64
+	Assets      map[string]Asset `json:"assets"`          // 键为 GOOS-GOARCH，如 windows-amd64
+	Files       map[string]Asset `json:"files,omitempty"` // 其他发布文件（安装包、OpenWrt 套件），键为文件名
 }
 
 // Asset 是清单中一个平台的程序文件。
@@ -49,6 +50,8 @@ type Latest struct {
 	URL         string `json:"url"`
 	SHA256      string `json:"sha256"`
 	Size        int64  `json:"size"`
+	// Packages 非空表示用套件更新（OpenWrt 上由 opkg / apk 安装时）
+	Packages []PkgFile `json:"packages,omitempty"`
 }
 
 // Pending 是已下载、等待应用的程序。
@@ -58,6 +61,7 @@ type Pending struct {
 	SHA256       string    `json:"sha256"`
 	Size         int64     `json:"size"`
 	DownloadedAt time.Time `json:"downloadedAt"`
+	Packages     []string  `json:"packages,omitempty"` // 套件更新：已下载的 .ipk / .apk
 }
 
 // Status 是对界面暴露的更新状态。
@@ -75,9 +79,10 @@ type Status struct {
 	Total       int64      `json:"total"`
 	Downloaded  *Pending   `json:"downloaded,omitempty"` // 已下载、可应用的版本
 	Error       string     `json:"error,omitempty"`
-	// OpenWrt 上由套件管理器安装时，程序文件归套件管理器所有，不在程序内替换，改为提示升级命令。
+	// OpenWrt 上由套件管理器安装时，程序文件归套件管理器所有：下载新套件后交给套件管理器安装。
 	PackageManager string `json:"packageManager,omitempty"` // opkg | apk
-	UpgradeCommand string `json:"upgradeCommand,omitempty"`
+	UpgradeCommand string `json:"upgradeCommand,omitempty"` // 也可以在路由器上手动执行的命令
+	Installing     bool   `json:"installing,omitempty"`     // 套件管理器正在安装
 }
 
 // Options 是 Updater 的参数。
@@ -142,6 +147,9 @@ func New(o Options) *Updater {
 	if p, ok := ReadPending(o.DataDir); ok {
 		u.st.Downloaded = &p
 	}
+	if u.st.PackageManager != "" {
+		u.checkPackageApplied(o.DataDir)
+	}
 	return u
 }
 
@@ -182,6 +190,12 @@ func (u *Updater) emit() {
 	}
 }
 
+// SetError 记录一个错误显示在更新状态里。
+func (u *Updater) SetError(err error) {
+	u.setError(err)
+	u.emit()
+}
+
 func (u *Updater) setError(err error) {
 	u.mu.Lock()
 	if err != nil {
@@ -215,6 +229,27 @@ func (u *Updater) Check(ctx context.Context) (Status, error) {
 		u.mu.Unlock()
 		u.emit()
 		return u.Status(), err
+	}
+	if mgr := u.st.PackageManager; mgr != "" {
+		pkgs, perr := latestPackages(m, mgr)
+		u.st.Latest = &Latest{Version: m.Version, Notes: m.Notes, PublishedAt: m.PublishedAt}
+		u.st.Available = Newer(u.st.Current, m.Version)
+		if perr != nil {
+			if u.st.Available {
+				u.errTxt = i18n.ErrText(perr)
+			}
+			u.mu.Unlock()
+			u.emit()
+			return u.Status(), perr
+		}
+		var size int64
+		for _, f := range pkgs {
+			size += f.Size
+		}
+		u.st.Latest.URL, u.st.Latest.SHA256, u.st.Latest.Size, u.st.Latest.Packages = pkgs[0].URL, pkgs[0].SHA256, size, pkgs
+		u.mu.Unlock()
+		u.emit()
+		return u.Status(), nil
 	}
 	asset, ok := m.Assets[Platform()]
 	if !ok {
@@ -294,7 +329,13 @@ func (u *Updater) StartDownload(ctx context.Context) error {
 	u.emit()
 
 	go func() {
-		p, err := u.download(dctx, latest)
+		var p Pending
+		var err error
+		if len(latest.Packages) > 0 {
+			p, err = u.downloadPackages(dctx, latest)
+		} else {
+			p, err = u.download(dctx, latest)
+		}
 		u.mu.Lock()
 		u.st.Downloading = false
 		u.dl = nil
@@ -430,6 +471,9 @@ func (u *Updater) ClearPending() {
 	if p != nil {
 		_ = os.Remove(p.File)
 		_ = os.Remove(binCachePath(filepath.Dir(u.dir), p.Version))
+		for _, f := range p.Packages {
+			_ = os.Remove(f)
+		}
 	}
 	_ = os.Remove(pendingPath(filepath.Dir(u.dir)))
 	u.emit()
@@ -492,6 +536,9 @@ func RemovePending(dataDir string) {
 	if p, ok := ReadPending(dataDir); ok {
 		_ = os.Remove(p.File)
 		_ = os.Remove(binCachePath(dataDir, p.Version))
+		for _, f := range p.Packages {
+			_ = os.Remove(f)
+		}
 	}
 	_ = os.Remove(pendingPath(dataDir))
 }
