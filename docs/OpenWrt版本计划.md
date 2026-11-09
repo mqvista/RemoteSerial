@@ -206,7 +206,7 @@ rsagent ctl tailscale-install # 安装并启动系统 tailscale，逐行输出�
 
 > **实际做法（v0.3）**：程序是预编译的，不需要 SDK 的交叉编译，因此改用 `tools/owpkg`：`.ipk` 由工具直接生成（与 ipkg-build 相同的 tar.gz 结构），`.apk` 用 Alpine 3.23 容器里的 `apk mkpkg` 生成（与 OpenWrt 25.x 同为 apk-tools v3）。`make openwrt-pkg VERSION=…`，产物与其他发布文件一起放在 `dist/`。下面是原计划，保留作参考。
 >
-> 依赖：`tailscale`、`kmod-usb-serial`、`kmod-usb-acm` 与 `kmod-usb-serial-ch341/-cp210x/-ftdi/-pl2303`（驱动很小，直接作为依赖）。升级：rsagent 的套件不在官方源中，`opkg/apk upgrade` 找不到新版。改为程序内一键更新：按清单 `files` 找到本机架构的新套件，下载校验后由独立会话中的脚本交给 opkg / apk 安装（安装后脚本会重启 rsagent，所以不能在 rsagent 进程内执行）；LuCI 页面与部署页都可触发。也可再次执行 `install.sh`。
+> 依赖：`tailscale`、`kmod-usb-serial`。各 USB 转串口驱动（`kmod-usb-serial-ch341/-cp210x/-ftdi/-pl2303`、`kmod-usb-acm`）不作为依赖，由 `install.sh` 逐个尽量安装：厂商固件的源常缺其中某个（如 Photonicat 一代没有 `kmod-usb-acm`），作为依赖会让整个套件装不上。升级：rsagent 的套件不在官方源中，`opkg/apk upgrade` 找不到新版。改为程序内一键更新：按清单 `files` 找到本机架构的新套件，下载校验后由独立会话中的脚本交给 opkg / apk 安装（安装后脚本会重启 rsagent，所以不能在 rsagent 进程内执行）；LuCI 页面与部署页都可触发。也可再次执行 `install.sh`。
 
 - 仓库新增 `openwrt/rsagent/Makefile` 与 `openwrt/luci-app-rsagent/Makefile`：使用预编译程序，不在 SDK 里编译 Go。
 - 用官方 SDK Docker 镜像在本机（macOS 上需 Docker）构建：

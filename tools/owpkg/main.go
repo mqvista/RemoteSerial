@@ -33,11 +33,10 @@ const (
 	dataDir    = "/etc/rsagent"
 )
 
-// 程序是静态编译的，不依赖 libc；常见 USB 转串口驱动直接作为依赖，免得用户再找驱动。
-var rsagentDepends = []string{
-	"tailscale", "kmod-usb-serial", "kmod-usb-acm",
-	"kmod-usb-serial-ch341", "kmod-usb-serial-cp210x", "kmod-usb-serial-ftdi", "kmod-usb-serial-pl2303",
-}
+// 程序是静态编译的，不依赖 libc。各种 USB 转串口驱动不作为依赖：厂商固件的套件源常常缺某一个
+// （如 Photonicat 一代没有 kmod-usb-acm，可能已编进内核），缺一个就会让整个 rsagent 装不上；
+// 改由 install.sh 逐个尽量安装（见 deploy/install.sh 的 install_drivers）。
+var rsagentDepends = []string{"tailscale", "kmod-usb-serial"}
 
 // 同一个 arm64 程序可用于所有 aarch64 目标；先提供 RK3568 等 armv8 目标使用的 aarch64_generic。
 var arches = map[string]string{"amd64": "x86_64", "arm64": "aarch64_generic"}

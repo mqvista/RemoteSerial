@@ -434,4 +434,6 @@ var catalog = map[string][2]string{
 	"串口设备已拔掉": {"Serial device unplugged", "序列埠裝置已拔除"},
 	"部分套件源更新失败，继续安装（请确认路由器能连网）":                       {"Some package feeds could not be updated; continuing (make sure the router is online)", "部分套件源更新失敗，繼續安裝（請確認路由器能連網）"},
 	"套件源的签名不受信任（固件缺少厂商的签名密钥），改用 --allow-untrusted 安装": {"The package feed signature is untrusted (the firmware lacks the vendor's signing key); installing with --allow-untrusted", "套件源的簽名不受信任（韌體缺少廠商的簽名金鑰），改用 --allow-untrusted 安裝"},
+	"装回 USB 串口驱动失败":       {"Failed to reinstall a USB serial driver", "裝回 USB 序列埠驅動失敗"},
+	"已装回升级时被移除的 USB 串口驱动": {"Reinstalled a USB serial driver removed during the upgrade", "已裝回升級時被移除的 USB 序列埠驅動"},
 }

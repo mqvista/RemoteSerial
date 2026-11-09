@@ -122,6 +122,36 @@ ensure_ts_service() {
     return 0
 }
 
+# 常见 USB 转串口驱动：逐个尽量安装，套件源里没有的（可能已编进内核）只提示，不影响安装
+DRIVERS="kmod-usb-serial-ch341 kmod-usb-serial-cp210x kmod-usb-serial-ftdi kmod-usb-serial-pl2303 kmod-usb-acm"
+# keep_drivers：已装的驱动标记为用户安装。旧版套件把它们当依赖自动装上，新版不再依赖，
+# 升级时套件管理器会把这些"孤儿"移除，标记后就会保留
+keep_drivers() { # pm
+    for d in $DRIVERS; do
+        if [ "$1" = apk ]; then
+            apk info -e "$d" >/dev/null 2>&1 && apk add "$d" >/dev/null 2>&1
+        else
+            opkg list-installed "$d" 2>/dev/null | grep -q . && opkg flag user "$d" >/dev/null 2>&1
+        fi
+    done
+    return 0
+}
+
+install_drivers() { # pm
+    missing=""
+    for d in $DRIVERS; do
+        if [ "$1" = apk ]; then
+            apk info -e "$d" >/dev/null 2>&1 && continue
+            apk add --allow-untrusted "$d" >/dev/null 2>&1 || missing="$missing $d"
+        else
+            opkg list-installed "$d" 2>/dev/null | grep -q . && continue
+            opkg install "$d" >/dev/null 2>&1 || missing="$missing $d"
+        fi
+    done
+    [ -n "$missing" ] && say "note: not in the package feeds (they may be built into the kernel):$missing"
+    return 0
+}
+
 # ---------------------------------------------------------------- OpenWrt 套件
 # 下载并安装 .ipk / .apk。返回 1 表示这台路由器不适用套件（架构不符、找不到套件），改为直接安装文件。
 install_packages() {
@@ -169,6 +199,7 @@ install_packages() {
     say "Installing rsagent $V with $PM (dependencies: tailscale, USB serial drivers)"
     # 以前直接安装文件时的服务先停掉，文件交给套件
     [ -x /etc/init.d/rsagent ] && /etc/init.d/rsagent stop >/dev/null 2>&1 || true
+    keep_drivers "$PM"
     if [ "$PM" = opkg ]; then
         # 部分套件源失败（不存在、暂时连不上）时其余的源仍可用，是否装得上由下面的安装决定
         opkg update >/dev/null 2>&1 || say "warning: some package feeds could not be updated; continuing"
@@ -196,6 +227,7 @@ if [ "$OPENWRT" = 1 ] && [ -z "${RSAGENT_FROM_FILE:-}" ] && [ "$PACKAGE" = yes ]
     say "Installed $("$BIN" version)"
     # 套件的安装后脚本里不能再调用套件管理器，所以在这里补装
     ensure_ts_service || true
+    install_drivers "$PM"
     if [ -n "${RSAGENT_AUTH_KEY:-}" ]; then
         say "Joining the tailnet..."
         i=0
@@ -264,6 +296,8 @@ if [ "$OPENWRT" = 1 ]; then
             --tags "${RSAGENT_TAGS:-tag:serial-agent}" --hostname "${RSAGENT_HOSTNAME:-rs-$(cat /proc/sys/kernel/hostname | tr 'A-Z' 'a-z')}" \
             || say "warning: joining the tailnet failed; log in from the Tailscale page"
     fi
+
+    if [ -d /lib/apk/db ] && command -v apk >/dev/null 2>&1; then install_drivers apk; else install_drivers opkg; fi
 
     "$BIN" service install --data-dir "$DATA"
     say "Service started: /etc/init.d/rsagent (logs in /tmp/rsagent/logs)"

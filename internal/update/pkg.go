@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"rsagent/internal/i18n"
@@ -31,6 +32,9 @@ type PkgFile struct {
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
 }
+
+// usbDrivers 是 install.sh 尽量安装的 USB 串口驱动（与 deploy/install.sh 的 DRIVERS 一致）。
+const usbDrivers = "kmod-usb-serial-ch341 kmod-usb-serial-cp210x kmod-usb-serial-ftdi kmod-usb-serial-pl2303 kmod-usb-acm"
 
 var pkgBase = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
 
@@ -257,11 +261,15 @@ func (u *Updater) ApplyPackages() error {
 	for _, f := range p.Packages {
 		files += " " + shellQuote(f)
 	}
+	// 旧版套件把 USB 串口驱动当依赖自动装上，新版不再依赖：先把已装的驱动标记为用户安装，
+	// 免得升级时被当作孤儿移除
 	var install string
 	if mgr == "apk" {
-		install = "apk update >/dev/null 2>&1; apk add --allow-untrusted" + files
+		install = "for d in " + usbDrivers + "; do apk info -e $d >/dev/null 2>&1 && apk add $d >/dev/null 2>&1; done\n" +
+			"apk update >/dev/null 2>&1; apk add --allow-untrusted" + files
 	} else {
-		install = "opkg update >/dev/null 2>&1; opkg install" + files
+		install = "for d in " + usbDrivers + "; do opkg list-installed $d | grep -q . && opkg flag user $d >/dev/null 2>&1; done\n" +
+			"opkg update >/dev/null 2>&1; opkg install" + files
 	}
 	logFile := applyLogPath(u.dir)
 	script := filepath.Join(u.dir, "pkg-apply.sh")
@@ -355,6 +363,7 @@ func (u *Updater) checkPackageApplied(dataDir string) {
 		RemovePending(dataDir)
 		u.st.Downloaded = nil
 		u.log.Info(i18n.T("套件更新已完成"), "version", p.Version)
+		go u.restoreDrivers(u.st.PackageManager)
 		return
 	}
 	if code, tail, done := readApplyLog(u.dir); done && code != 0 {
@@ -363,3 +372,58 @@ func (u *Updater) checkPackageApplied(dataDir string) {
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+var (
+	opkgOrphan = regexp.MustCompile(`(kmod-usb-[a-z0-9-]+) was autoinstalled and is now orphaned`)
+	apkPurge   = regexp.MustCompile(`Purging (kmod-usb-[a-z0-9-]+) \(`)
+)
+
+// removedDrivers 从安装日志里找出被当作孤儿移除的 USB 串口驱动（旧版把它们当依赖装上，新版不再依赖）。
+func removedDrivers(log string) []string {
+	known := map[string]bool{}
+	for _, d := range strings.Fields(usbDrivers) {
+		known[d] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, re := range []*regexp.Regexp{opkgOrphan, apkPurge} {
+		for _, m := range re.FindAllStringSubmatch(log, -1) {
+			if d := m[1]; known[d] && !seen[d] {
+				seen[d] = true
+				out = append(out, d)
+			}
+		}
+	}
+	return out
+}
+
+// restoreDrivers 在升级后装回被移除的驱动：等安装脚本结束（套件管理器释放锁）后逐个安装。
+func (u *Updater) restoreDrivers(mgr string) {
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		if _, _, done := readApplyLog(u.dir); done {
+			break
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(3 * time.Second)
+	}
+	data, err := os.ReadFile(applyLogPath(u.dir))
+	if err != nil {
+		return
+	}
+	for _, d := range removedDrivers(string(data)) {
+		var cmd *exec.Cmd
+		if mgr == "apk" {
+			cmd = exec.Command("apk", "add", "--allow-untrusted", d)
+		} else {
+			cmd = exec.Command("opkg", "install", d)
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			u.log.Warn(i18n.T("装回 USB 串口驱动失败"), "driver", d, "err", err, "out", strings.TrimSpace(string(out)))
+		} else {
+			u.log.Info(i18n.T("已装回升级时被移除的 USB 串口驱动"), "driver", d)
+		}
+	}
+}

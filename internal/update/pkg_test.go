@@ -54,3 +54,22 @@ func TestReadApplyLog(t *testing.T) {
 		t.Fatalf("%d %q %v", code, tail, ok)
 	}
 }
+
+func TestRemovedDrivers(t *testing.T) {
+	log := "Upgrading rsagent on root from 0.6.1-r1 to 0.6.2-r1...\n" +
+		"kmod-usb-acm was autoinstalled and is now orphaned, removing.\n" +
+		"kmod-usb-serial-ch341 was autoinstalled and is now orphaned, removing.\n" +
+		"(2/7) Purging kmod-usb-serial-ftdi (6.12.112-r1)\n" +
+		"(3/7) Purging kmod-usb-core (6.12.112-r1)\n" + // 不是串口驱动，不装回
+		"exit=0\n"
+	got := removedDrivers(log)
+	want := []string{"kmod-usb-acm", "kmod-usb-serial-ch341", "kmod-usb-serial-ftdi"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
