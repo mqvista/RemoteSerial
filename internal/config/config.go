@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"rsagent/internal/i18n"
 	"strings"
+
+	"rsagent/internal/platform"
 )
 
 // CurrentVersion 是当前配置文件格式版本，用于日后迁移。
@@ -38,14 +40,53 @@ type Update struct {
 	AutoCheck bool   `json:"autoCheck"` // 启动后和每天自动检查一次，只提示不自动安装
 }
 
-// Tailscale 是内嵌 tsnet 节点的参数。auth key 不落盘，不在此结构中。
+// 网络后端。
+const (
+	BackendEmbedded = "embedded" // 内嵌 tsnet 节点
+	BackendSystem   = "system"   // 使用系统自带的 tailscaled（OpenWrt 默认）
+)
+
+// DefaultSystemSocket 是系统 tailscaled 的 LocalAPI socket。
+const DefaultSystemSocket = "/var/run/tailscale/tailscaled.sock"
+
+// Tailscale 是 Tailscale 节点的参数。auth key 不落盘，不在此结构中。
 type Tailscale struct {
-	Hostname        string   `json:"hostname"`        // tailnet 中的节点名
-	ControlURL      string   `json:"controlURL"`      // 空为官方控制服务器；Headscale 填其地址
-	UDPPort         int      `json:"udpPort"`         // WireGuard 监听端口，固定便于加防火墙规则
-	WebPort         int      `json:"webPort"`         // tailnet 侧管理界面端口
-	AdvertiseRoutes []string `json:"advertiseRoutes"` // 子网路由 CIDR 列表
-	Tags            []string `json:"tags"`            // 入网申请的 tag；每次启动都要带上，否则控制服务器会要求重新认证
+	Backend         string   `json:"backend,omitempty"`      // embedded | system；空为平台默认（OpenWrt 为 system）
+	SystemSocket    string   `json:"systemSocket,omitempty"` // system 后端的 LocalAPI socket，空为默认路径
+	Hostname        string   `json:"hostname"`               // tailnet 中的节点名
+	ControlURL      string   `json:"controlURL"`             // 空为官方控制服务器；Headscale 填其地址
+	UDPPort         int      `json:"udpPort"`                // WireGuard 监听端口，固定便于加防火墙规则
+	WebPort         int      `json:"webPort"`                // tailnet 侧管理界面端口
+	AdvertiseRoutes []string `json:"advertiseRoutes"`        // 子网路由 CIDR 列表
+	Tags            []string `json:"tags"`                   // 入网申请的 tag；每次启动都要带上，否则控制服务器会要求重新认证
+}
+
+// EffectiveBackend 返回实际使用的网络后端。
+func (t Tailscale) EffectiveBackend() string {
+	if t.Backend != "" {
+		return t.Backend
+	}
+	if platform.OpenWrt() {
+		return BackendSystem
+	}
+	return BackendEmbedded
+}
+
+// Socket 返回 system 后端使用的 socket 路径。
+func (t Tailscale) Socket() string {
+	if t.SystemSocket != "" {
+		return t.SystemSocket
+	}
+	return DefaultSystemSocket
+}
+
+// DefaultWebPort 是 tailnet 侧管理界面的默认端口。OpenWrt 上 80 端口被 LuCI（uhttpd）占用，
+// 且系统 tailscale 与本机共用地址，改用与本机管理界面相同的 7890。
+func DefaultWebPort() int {
+	if platform.OpenWrt() {
+		return 7890
+	}
+	return 80
 }
 
 // Access 是 tailnet 侧访问控制。
@@ -122,7 +163,7 @@ func Default() *Config {
 			Hostname:        "rs-" + host,
 			ControlURL:      "",
 			UDPPort:         41641,
-			WebPort:         80,
+			WebPort:         DefaultWebPort(),
 			AdvertiseRoutes: []string{},
 			Tags:            []string{},
 		},
@@ -206,6 +247,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Tailscale.Hostname == "" {
 		return i18n.New("tailscale.hostname 不能为空")
+	}
+	switch c.Tailscale.Backend {
+	case "", BackendEmbedded, BackendSystem:
+	default:
+		return i18n.Errorf("tailscale.backend 非法: %q", c.Tailscale.Backend)
 	}
 	if c.Tailscale.UDPPort < 0 || c.Tailscale.UDPPort > 65535 {
 		return i18n.Errorf("tailscale.udpPort 越界: %d", c.Tailscale.UDPPort)

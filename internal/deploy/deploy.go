@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"rsagent/internal/platform"
 	"rsagent/internal/update"
 )
 
@@ -30,6 +31,7 @@ type Options struct {
 // Status 是部署页的检测结果。
 type Status struct {
 	OS       string         `json:"os"`
+	Platform string         `json:"platform"` // os，或 openwrt
 	Elevated bool           `json:"elevated"`
 	ExePath  string         `json:"exePath"`
 	DataDir  string         `json:"dataDir"`
@@ -62,7 +64,10 @@ type ServiceStatus struct {
 	Supported bool   `json:"supported"`
 	Installed bool   `json:"installed"`
 	Running   bool   `json:"running"`
-	Binary    string `json:"binary,omitempty"` // 服务使用的程序副本
+	Enabled   bool   `json:"enabled"`            // OpenWrt：开机启动
+	Manager   string `json:"manager,omitempty"`  // procd（OpenWrt）
+	Packaged  string `json:"packaged,omitempty"` // OpenWrt：由 opkg / apk 安装
+	Binary    string `json:"binary,omitempty"`   // 服务使用的程序副本
 	Detail    string `json:"detail,omitempty"`
 }
 
@@ -170,7 +175,7 @@ func NeedsElevation(o Options, action string) bool {
 
 // GetStatus 返回当前平台的检测结果。
 func GetStatus(o Options) Status {
-	st := Status{OS: runtime.GOOS, ExePath: o.ExePath, DataDir: o.DataDir}
+	st := Status{OS: runtime.GOOS, Platform: platform.Name(), ExePath: o.ExePath, DataDir: o.DataDir}
 	fillStatus(&st, o)
 	return st
 }

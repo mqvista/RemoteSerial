@@ -7,7 +7,7 @@ LDFLAGS := -s -w \
 	-X rsagent/internal/buildinfo.Commit=$(COMMIT) \
 	-X rsagent/internal/buildinfo.Date=$(DATE)
 
-.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb manifest run test clean
+.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt manifest run test clean
 
 all: web windows linux-arm64
 
@@ -20,6 +20,18 @@ deb: linux-$(ARCH)
 
 # 自更新清单与校验和：make manifest VERSION=0.4.0 [BASE_URL=https://...]
 BASE_URL ?= https://github.com/mqvista/RemoteSerial/releases/download/v$(VERSION)
+# OpenWrt 离线安装包：与 Linux 同一个程序，加上安装脚本。解压后执行 sh rsagent-openwrt/install.sh。
+# 目录名不用 rsagent：常有人解压到 /tmp，会与运行时目录 /tmp/rsagent 混在一起。
+openwrt: linux-amd64 linux-arm64
+	@for a in amd64 arm64; do \
+		rm -rf build/openwrt-$$a && mkdir -p build/openwrt-$$a/rsagent-openwrt && \
+		cp dist/rsagent-linux-$$a build/openwrt-$$a/rsagent-openwrt/rsagent && \
+		cp deploy/install.sh build/openwrt-$$a/rsagent-openwrt/install.sh && \
+		chmod 755 build/openwrt-$$a/rsagent-openwrt/rsagent build/openwrt-$$a/rsagent-openwrt/install.sh && \
+		COPYFILE_DISABLE=1 tar -C build/openwrt-$$a -czf dist/rsagent-openwrt-$$a.tar.gz rsagent-openwrt && \
+		rm -rf build/openwrt-$$a && echo "dist/rsagent-openwrt-$$a.tar.gz"; \
+	done
+
 manifest:
 	go run ./tools/mkmanifest -version $(VERSION) -dir dist -base $(BASE_URL)
 

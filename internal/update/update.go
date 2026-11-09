@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
+	"rsagent/internal/platform"
 	"runtime"
 	"strconv"
 	"strings"
@@ -74,6 +75,9 @@ type Status struct {
 	Total       int64      `json:"total"`
 	Downloaded  *Pending   `json:"downloaded,omitempty"` // 已下载、可应用的版本
 	Error       string     `json:"error,omitempty"`
+	// OpenWrt 上由套件管理器安装时，程序文件归套件管理器所有，不在程序内替换，改为提示升级命令。
+	PackageManager string `json:"packageManager,omitempty"` // opkg | apk
+	UpgradeCommand string `json:"upgradeCommand,omitempty"`
 }
 
 // Options 是 Updater 的参数。
@@ -105,7 +109,14 @@ type Updater struct {
 func Platform() string { return runtime.GOOS + "-" + runtime.GOARCH }
 
 // Dir 返回数据目录下的更新目录。
-func Dir(dataDir string) string { return filepath.Join(dataDir, "update") }
+//
+// OpenWrt 上数据目录在闪存里，下载的新程序（二十多 MB）改放内存中的 /tmp，避免磨损闪存。
+func Dir(dataDir string) string {
+	if platform.OpenWrt() {
+		return "/tmp/rsagent/update"
+	}
+	return filepath.Join(dataDir, "update")
+}
 
 // New 创建 Updater。
 func New(o Options) *Updater {
@@ -123,6 +134,10 @@ func New(o Options) *Updater {
 			URL:       o.URL,
 			AutoCheck: o.AutoCheck,
 		},
+	}
+	if mgr := platform.PackageInstalled("rsagent"); mgr != "" {
+		u.st.PackageManager = mgr
+		u.st.UpgradeCommand = platform.UpgradeCommand(mgr, "rsagent")
 	}
 	if p, ok := ReadPending(o.DataDir); ok {
 		u.st.Downloaded = &p

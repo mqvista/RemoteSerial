@@ -99,7 +99,9 @@ onUnmounted(() => {
 watch(() => status.value?.update, () => loadUpdate(), { deep: true })
 
 const isWindows = computed(() => st.value?.os === 'windows')
-const osName = (os: string) => ({ darwin: 'macOS', windows: 'Windows', linux: 'Linux' })[os] ?? os
+const isOpenWrt = computed(() => st.value?.platform === 'openwrt')
+const osName = (os: string) =>
+  isOpenWrt.value ? `OpenWrt ${status.value?.platformVersion ?? ''}`.trim() : (({ darwin: 'macOS', windows: 'Windows', linux: 'Linux' }) as Record<string, string>)[os] ?? os
 const isLocal = computed(() => status.value?.source === 'local')
 const needsUAC = computed(() => !!st.value && !st.value.elevated)
 
@@ -216,14 +218,15 @@ watch(connected, (c, old) => {
 
 <template>
   <NSpace vertical :size="16">
-    <NAlert v-if="st?.os === 'darwin'" type="info">{{ t('deploy.macos') }}</NAlert>
+    <NAlert v-if="isOpenWrt" type="info">{{ t('deploy.openwrt') }}</NAlert>
+    <NAlert v-else-if="st?.os === 'darwin'" type="info">{{ t('deploy.macos') }}</NAlert>
     <NAlert v-else-if="st && !isWindows" type="info">{{ t('deploy.unix', { os: osName(st.os) }) }}</NAlert>
     <NAlert v-if="needsUAC && isWindows" type="warning">
       {{ t('deploy.notElevated') }}
     </NAlert>
     <NAlert v-if="!isLocal" type="info">{{ t('deploy.remote') }}</NAlert>
     <NAlert v-if="switching" type="warning">{{ t('deploy.switching') }}</NAlert>
-    <NAlert v-else-if="st?.mode === 'service'" type="info">{{ t('deploy.serviceMode') }}</NAlert>
+    <NAlert v-else-if="st?.mode === 'service' && !isOpenWrt" type="info">{{ t('deploy.serviceMode') }}</NAlert>
 
     <NCard v-if="st" :title="t('deploy.env')">
       <NDescriptions :column="2" label-placement="left" size="small" bordered>
@@ -261,7 +264,11 @@ watch(connected, (c, old) => {
       <NText v-if="upd?.downloaded && !upd.downloading" depth="3" style="display: block; margin-top: 8px; font-size: 12px">
         {{ t('deploy.downloaded', { v: upd.downloaded.version, size: formatBytes(upd.downloaded.size) }) }}
       </NText>
-      <NSpace style="margin-top: 12px">
+      <div v-if="upd?.packageManager" style="margin-top: 12px">
+        <NText depth="3" style="font-size: 12px">{{ t('deploy.pkgUpgrade', { m: upd.packageManager }) }}</NText>
+        <pre class="notes">{{ upd.upgradeCommand }}</pre>
+      </div>
+      <NSpace v-else style="margin-top: 12px">
         <NButton v-if="canDownload" type="primary" @click="updateDownload">{{ t('deploy.downloadV', { v: upd?.latest?.version ?? '' }) }}</NButton>
         <NButton v-if="upd?.downloading" @click="updateCancel">{{ t('deploy.cancelDownload') }}</NButton>
         <NPopconfirm v-if="upd?.downloaded && !upd.downloading" @positive-click="updateApply">
@@ -315,11 +322,13 @@ watch(connected, (c, old) => {
         <NSpace>
           <NTag size="small" :type="tag(st!.service.installed).type">{{ tag(st!.service.installed).label }}</NTag>
           <NTag v-if="st!.service.installed" size="small" :type="st!.service.running ? 'success' : 'warning'">{{ st!.service.running ? t('deploy.running') : t('common.stopped') }}</NTag>
+          <NTag v-if="isOpenWrt && st!.service.installed" size="small" :type="st!.service.enabled ? 'success' : 'default'">{{ st!.service.enabled ? t('deploy.bootEnabled') : t('deploy.bootDisabled') }}</NTag>
+          <NTag v-if="st!.service.packaged" size="small">{{ t('deploy.packaged', { m: st!.service.packaged }) }}</NTag>
         </NSpace>
       </template>
       <NText depth="3" style="display: block; margin-bottom: 12px">
-        {{ t('deploy.serviceHint') }}
-        <NText type="warning">{{ t('common.needsAdmin') }}</NText>
+        {{ isOpenWrt ? t('deploy.serviceHintOpenwrt') : t('deploy.serviceHint') }}
+        <NText v-if="!isOpenWrt" type="warning">{{ t('common.needsAdmin') }}</NText>
       </NText>
       <NText v-if="st!.service.binary" depth="3" style="display: block; margin-bottom: 12px; font-size: 12px">{{ t('deploy.serviceBinary', { p: st!.service.binary }) }}</NText>
       <NSpace>

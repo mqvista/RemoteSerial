@@ -23,6 +23,7 @@ rsagent run          前台运行 core，不带界面，适合 Linux 与 systemd
 rsagent service      run | install | uninstall | start | stop | restart | status
 rsagent deploy       task-install 等部署动作，需要时以管理员身份调用
 rsagent provision    --auth-key <key> --tags tag:x [--hostname 名]  无人值守入网（支持 OAuth client secret）
+rsagent tailscale    status | install | start | firewall | backend <embedded|system>  系统 tailscale（OpenWrt）
 rsagent update       [--check]  检查、下载并应用更新
 rsagent quit         让本机运行中的托盘实例退出
 rsagent version
@@ -31,6 +32,8 @@ rsagent version
 通用选项：`--data-dir`、`--listen`（默认 127.0.0.1:7890）、`--log-level`；`run` 另有 `--console`。环境变量 `RSAGENT_AUTH_KEY` / `RSAGENT_TAGS` 在首次启动时自动入网。
 
 安装包 `rsagent-setup-<版本>.exe` 支持静默批量部署：`/VERYSILENT /AUTHKEY=tskey-client-… /TAGS=tag:serial-agent /HOSTNAME=rs-site1 /TASKS="autostart,firewall"`。Linux 用 `deploy/install.sh` 或 `.deb`。详见 `docs/使用说明.md` 第 9、10 节。
+
+OpenWrt（x86_64、aarch64，24.10 / 25.x）用同一个 Linux 程序，启动时识别 OpenWrt：默认使用系统自带的 tailscale 套件而不是内嵌节点，服务为 procd 的 `/etc/init.d/rsagent`，配置在 `/etc/rsagent`，日志在 `/tmp/rsagent`。安装与说明见 `docs/使用说明.md` 第 11 节，计划见 [docs/OpenWrt版本计划.md](docs/OpenWrt版本计划.md)。
 
 数据目录默认 Windows 为 `%ProgramData%\RemoteSerial`，Linux root 为 `/var/lib/rsagent`，内含 `config.json`、`tsstate\`（节点私钥，勿外泄）、`logs\`。
 
@@ -58,6 +61,7 @@ make manifest VERSION=0.4.0
 make darwin                          # dist/rsagent-darwin-{arm64,amd64}
 make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agent.app 及 rsagent-macos.zip，ad-hoc 签名
 make dmg VERSION=0.4.0               # 另外生成拖放安装用的 dist/rsagent-macos.dmg（zip 仍用于自更新）
+make openwrt VERSION=0.4.0           # OpenWrt 离线安装包 dist/rsagent-openwrt-{amd64,arm64}.tar.gz
 ```
 
 macOS 版双击 `.app` 进入菜单栏图标 + 窗口模式（窗口为系统 WebKit），数据目录为 `~/Library/Application Support/RemoteSerial`。需要 macOS 13 Ventura 或更新版本（Go 1.27 的最低要求；`make darwin` 用 `MACOS_MIN` 指定，不要依赖编译机的系统版本）。
@@ -73,7 +77,7 @@ V=0.5.1
 git tag -a v$V -m v$V && git push origin v$V
 rm -rf dist && make web windows linux-arm64 linux-amd64 VERSION=$V
 make deb VERSION=$V ARCH=arm64 && make deb VERSION=$V ARCH=amd64   # 需要 nfpm
-make dmg VERSION=$V
+make dmg openwrt VERSION=$V
 rm -f dist/rsagent-darwin-*        # 裸程序不发布，macOS 自更新走 rsagent-macos.zip
 make manifest VERSION=$V
 gh release create v$V --verify-tag --generate-notes dist/rsagent-* dist/*.deb dist/manifest.json dist/SHA256SUMS
@@ -113,11 +117,13 @@ cmd/tsprobe        联调探测工具
 internal/app       组件装配：Run（core）、RunUI（桌面模式）
 internal/config    配置文件
 internal/logging   日志：滚动文件 + 内存环
-internal/tsnode    tsnet 节点封装
+internal/tsnode    Tailscale 节点封装：内嵌 tsnet，或系统 tailscaled（LocalAPI）
 internal/bridge    串口桥接
 internal/web       HTTP API、WebSocket 推送、内嵌前端
 internal/shell     托盘 + webview（Windows）
-internal/deploy    部署检测与动作：计划任务、服务、防火墙、WebView2、提权子进程、更新替换
+internal/deploy    部署检测与动作：计划任务、服务（含 OpenWrt procd）、防火墙、WebView2、提权子进程、更新替换
+internal/platform  运行环境识别（OpenWrt）
+internal/systs     系统自带 tailscale 的检测、安装、启动与防火墙（OpenWrt）
 internal/update    自更新：清单、下载校验、替换文件、重启
 tools/mkicon       图标生成
 tools/mkmanifest   发布清单与 SHA256SUMS 生成

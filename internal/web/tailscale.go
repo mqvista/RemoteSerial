@@ -1,10 +1,12 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"rsagent/internal/i18n"
 	"strings"
+	"time"
 )
 
 type loginRequest struct {
@@ -42,7 +44,7 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 节点在运行但卡在需要登录的状态：先停掉，让下面的改名、改 tag 和重新登录都能进行。
-	if st := s.deps.Node.Snapshot().State; req.AuthKey != "" && (st == "NeedsLogin" || st == "NeedsMachineAuth" || st == "Error") {
+	if st := s.deps.Node.Snapshot().State; req.AuthKey != "" && !s.deps.Node.System() && (st == "NeedsLogin" || st == "NeedsMachineAuth" || st == "Error") {
 		if err := s.deps.Node.Stop(); err != nil {
 			s.deps.Log.Warn(i18n.T("重新登录前停止节点失败"), "err", err)
 		}
@@ -61,7 +63,11 @@ func (s *Server) handleTailscaleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := s.deps.Node.Start(r.Context(), req.AuthKey, tags); err != nil {
+	// system 后端在这里同步登录；客户端中途离开也要做完，免得 tailscaled 的设置只改了一半
+	sctx, scancel := context.WithTimeout(context.WithoutCancel(r.Context()), 60*time.Second)
+	err := s.deps.Node.Start(sctx, req.AuthKey, tags)
+	scancel()
+	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}

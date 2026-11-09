@@ -39,6 +39,10 @@ func (s *Server) handleUpdateDownload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, i18n.T("本进程不支持更新"))
 		return
 	}
+	if st := s.deps.Updater.Status(); st.PackageManager != "" {
+		writeError(w, http.StatusConflict, i18n.Sprintf("rsagent 由 %s 安装，请用套件管理器升级：%s", st.PackageManager, st.UpgradeCommand))
+		return
+	}
 	// 下载不绑定请求的 context，请求结束后继续。
 	if err := s.deps.Updater.StartDownload(context.Background()); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
@@ -76,6 +80,10 @@ func (s *Server) handleUpdateClear(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if s.deps.Updater == nil {
 		writeError(w, http.StatusNotFound, i18n.T("本进程不支持更新"))
+		return
+	}
+	if st := s.deps.Updater.Status(); st.PackageManager != "" {
+		writeError(w, http.StatusConflict, i18n.Sprintf("rsagent 由 %s 安装，请用套件管理器升级：%s", st.PackageManager, st.UpgradeCommand))
 		return
 	}
 	st := s.deps.Updater.Status()

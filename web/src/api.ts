@@ -18,6 +18,38 @@ export interface TailscaleSnapshot {
   authURL?: string
   message?: string
   since: string
+  backend: 'embedded' | 'system'
+  system?: SystemTailscale
+}
+
+// 系统自带 tailscale（OpenWrt 的 tailscale 套件）的检测结果。
+export interface SystemTailscale {
+  installed: boolean
+  binary?: string
+  serviceScript: boolean
+  serviceEnabled: boolean
+  daemonRunning: boolean
+  socket: string
+  socketOK: boolean
+  version?: string
+  firewallZone?: boolean
+  pkgManager?: string
+  installCommand?: string
+  canManage: boolean
+  freeMB?: number
+  needMB?: number
+}
+
+export type SystemAction = 'install' | 'start' | 'firewall'
+
+export interface SystemJob {
+  action?: SystemAction
+  running: boolean
+  ok: boolean
+  error?: string
+  log: string
+  started?: string
+  finished?: string
 }
 
 export interface Identity {
@@ -110,6 +142,8 @@ export interface Status {
   version: string
   commit: string
   mode: string
+  platform: string // windows | darwin | linux | openwrt
+  platformVersion?: string
   uptimeSec: number
   dataDir: string
   listen: string
@@ -231,6 +265,8 @@ export interface UpdateStatus {
   total: number
   downloaded?: UpdatePending
   error?: string
+  packageManager?: string // OpenWrt 上由套件管理器安装时为 opkg | apk，不在程序内替换
+  upgradeCommand?: string
 }
 
 export interface SettingsUpdate {
@@ -262,7 +298,8 @@ export interface DeployStatus {
   mode: string
   hasShell: boolean
   task: { supported: boolean; installed: boolean; runLevel?: string; command?: string }
-  service: { supported: boolean; installed: boolean; running: boolean; binary?: string; detail?: string }
+  platform: string
+  service: { supported: boolean; installed: boolean; running: boolean; enabled?: boolean; manager?: string; packaged?: string; binary?: string; detail?: string }
   firewall: { supported: boolean; installed: boolean; udpPort: number }
   webview2: { supported: boolean; installed: boolean; version?: string }
   autoLogon: { supported: boolean; enabled: boolean; user?: string }
@@ -332,6 +369,10 @@ export const api = {
   tailscalePeers: () => request<{ peers: Peer[] }>('/api/tailscale/peers'),
   ping: (ip: string) => request<{ results: PingResult[] }>('/api/tailscale/ping', json('POST', { ip })),
   netcheck: () => request<NetcheckReport>('/api/tailscale/netcheck'),
+  tailscaleLoginInteractive: () => request<TailscaleSnapshot>('/api/tailscale/login-interactive', { method: 'POST' }),
+  setBackend: (backend: 'embedded' | 'system') => request<TailscaleSnapshot>('/api/tailscale/backend', json('PUT', { backend })),
+  systemAction: (action: SystemAction) => request<SystemJob>(`/api/tailscale/system/${action}`, { method: 'POST' }),
+  systemJob: () => request<SystemJob>('/api/tailscale/system/job'),
   captureStart: (id: string) => request<{ base: string; capture: CaptureStatus }>(`/api/bridges/${encodeURIComponent(id)}/capture/start`, { method: 'POST' }),
   captureStop: (id: string) => request<{ capture: CaptureStatus }>(`/api/bridges/${encodeURIComponent(id)}/capture/stop`, { method: 'POST' }),
   captures: () => request<{ files: CaptureFile[] }>('/api/captures'),

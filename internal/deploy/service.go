@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
+	"rsagent/internal/platform"
 	"runtime"
 	"strings"
 	"time"
@@ -21,7 +22,12 @@ const ServiceName = "RemoteSerialAgent"
 //
 // 服务账户看不到用户的映射盘，也不该依赖用户随手放的位置，所以安装时把程序
 // 复制到数据目录下的 bin\ 并用副本注册。更新程序后重新点一次"安装"即可。
+//
+// OpenWrt 上服务直接用 /usr/bin/rsagent（套件安装的位置），不复制到数据目录（闪存空间有限）。
 func ServiceBinary(o Options) string {
+	if platform.OpenWrt() {
+		return OpenWrtBinary
+	}
 	name := "rsagent"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
@@ -99,6 +105,9 @@ func newControlService(o Options) (service.Service, error) {
 }
 
 func serviceStatus(o Options) ServiceStatus {
+	if platform.OpenWrt() {
+		return openwrtServiceStatus(o)
+	}
 	st := ServiceStatus{Supported: true, Binary: ServiceBinary(o)}
 	installed, running, err := queryServiceStatus(o)
 	if err != nil {
@@ -126,6 +135,9 @@ func queryServiceStatusGeneric(o Options) (installed, running bool, err error) {
 }
 
 func serviceAction(o Options, action string) error {
+	if platform.OpenWrt() {
+		return openwrtServiceAction(o, action)
+	}
 	svc, err := newControlService(o)
 	if err != nil {
 		return err

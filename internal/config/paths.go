@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"rsagent/internal/platform"
 )
 
 // Paths 是数据目录下的固定布局。
@@ -13,8 +15,11 @@ type Paths struct {
 	DataDir    string // 根目录
 	ConfigFile string // config.json
 	StateDir   string // tsstate，tsnet 节点状态，含私钥
-	LogDir     string // logs
+	LogDir     string // logs；也存放串口录制文件
 }
+
+// OpenWrtRuntimeDir 是 OpenWrt 上存放日志与录制的目录：位于内存（tmpfs），避免磨损闪存，重启后清空。
+const OpenWrtRuntimeDir = "/tmp/rsagent"
 
 // ResolvePaths 根据覆盖值或平台默认值得到目录布局。
 func ResolvePaths(override string) Paths {
@@ -23,12 +28,16 @@ func ResolvePaths(override string) Paths {
 		dir = DefaultDataDir()
 	}
 	dir = filepath.Clean(dir)
-	return Paths{
+	p := Paths{
 		DataDir:    dir,
 		ConfigFile: filepath.Join(dir, "config.json"),
 		StateDir:   filepath.Join(dir, "tsstate"),
 		LogDir:     filepath.Join(dir, "logs"),
 	}
+	if platform.OpenWrt() {
+		p.LogDir = filepath.Join(OpenWrtRuntimeDir, "logs")
+	}
+	return p
 }
 
 // Ensure 创建全部目录。
@@ -45,6 +54,7 @@ func (p Paths) Ensure() error {
 //
 //   - Windows：%ProgramData%\RemoteSerial
 //   - macOS：~/Library/Application Support/RemoteSerial（root 时为 /Library/Application Support/RemoteSerial）
+//   - OpenWrt 且为 root：/etc/rsagent（随固件升级保留，见 /lib/upgrade/keep.d/rsagent）
 //   - Linux 且为 root：/var/lib/rsagent
 //   - 其他：$XDG_DATA_HOME/rsagent 或 ~/.local/share/rsagent
 func DefaultDataDir() string {
@@ -61,6 +71,9 @@ func DefaultDataDir() string {
 		}
 		return "/Library/Application Support/RemoteSerial"
 	default:
+		if os.Geteuid() == 0 && platform.OpenWrt() {
+			return "/etc/rsagent"
+		}
 		if os.Geteuid() == 0 {
 			return "/var/lib/rsagent"
 		}

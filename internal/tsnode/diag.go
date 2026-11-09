@@ -91,6 +91,9 @@ type NetcheckReport struct {
 //
 // 用节点自己的报告而不是另起一个探测客户端，结果才和真实打洞路径一致。
 func (n *Node) Netcheck(ctx context.Context) (*NetcheckReport, error) {
+	if n.System() {
+		return nil, i18n.New("使用系统 Tailscale 时不支持在此检测，请在路由器上执行 tailscale netcheck")
+	}
 	n.mu.Lock()
 	srv := n.srv
 	lc := n.lc

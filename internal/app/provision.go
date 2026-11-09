@@ -95,14 +95,7 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 		}
 	}
 
-	node := tsnode.New(tsnode.Config{
-		StateDir:        paths.StateDir,
-		Hostname:        cfg.Tailscale.Hostname,
-		ControlURL:      cfg.Tailscale.ControlURL,
-		UDPPort:         uint16(cfg.Tailscale.UDPPort),
-		AdvertiseRoutes: cfg.Tailscale.AdvertiseRoutes,
-		Tags:            cfg.Tailscale.Tags,
-	}, o.Log.With("mod", "tsnode"), tsnode.Hooks{})
+	node := tsnode.New(nodeConfig(cfg, paths), o.Log.With("mod", "tsnode"), tsnode.Hooks{})
 	if err := node.Start(ctx, o.AuthKey, o.Tags); err != nil {
 		return ProvisionResult{}, err
 	}

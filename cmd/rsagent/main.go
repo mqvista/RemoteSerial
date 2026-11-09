@@ -33,6 +33,7 @@ import (
 	"rsagent/internal/config"
 	"rsagent/internal/deploy"
 	"rsagent/internal/i18n"
+	"rsagent/internal/platform"
 	"rsagent/internal/shell"
 	"rsagent/internal/update"
 )
@@ -79,6 +80,8 @@ func main() {
 		err = cmdDeploy(args[1:])
 	case "provision":
 		err = cmdProvision(args[1:])
+	case "tailscale":
+		err = cmdTailscale(args[1:])
 	case "update":
 		err = cmdUpdate(args[1:])
 	case "quit":
@@ -109,6 +112,8 @@ Usage:
   rsagent deploy <action> [options] action: %v | status
   rsagent provision [options]       --auth-key <key> [--tags tag:a,tag:b] [--hostname name] [--control-url url]
                                     Join the tailnet unattended; the key may also come from RSAGENT_AUTH_KEY
+  rsagent tailscale <op> [options]  op: status | install | start | firewall | backend <embedded|system>
+                                    Manage the system Tailscale (OpenWrt's tailscale package) used by rsagent
   rsagent update [options]          [--check] [--url manifest-url]  Check for, download and apply updates
   rsagent quit [options]            Ask the running tray instance on this machine to quit
   rsagent version                   Print the version
@@ -228,11 +233,12 @@ func cmdService(args []string) error {
 	case "run":
 		o.Mode = "service"
 		return deploy.RunAsService(dopts, func(ctx context.Context) error {
-			if runtime.GOOS != "darwin" {
+			if runtime.GOOS != "darwin" && !platform.OpenWrt() {
 				return app.Run(ctx, o)
 			}
-			// macOS 的服务以用户身份运行，没有权限让 launchd 重启自己；更新后在本进程内
-			// 停掉 core，再 exec 新程序，PID 不变，launchd 不会察觉。
+			// macOS 的服务以用户身份运行，没有权限让 launchd 重启自己；OpenWrt 上让 procd 重启自己
+			// 又会连带结束发起重启的进程。两者都在更新后于本进程内停掉 core，再 exec 新程序，
+			// PID 不变，服务管理器不会察觉。
 			cctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			var restart atomic.Bool

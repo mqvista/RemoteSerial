@@ -1,4 +1,6 @@
-// Package tsnode 封装内嵌的 tsnet 节点：登录、状态机、持久化、监听与身份查询。
+// Package tsnode 封装 Tailscale 节点：登录、状态机、持久化、监听与身份查询。
+//
+// 有两种后端：内嵌 tsnet 节点（embedded，默认），或系统自带的 tailscaled（system，见 system.go）。
 //
 // 状态持久化由 tsnet 自己完成，存放在 StateDir/tailscaled.state。再次启动时
 // tsnet 发现已有状态就忽略 AuthKey，所以"记住登录"不需要额外代码。
@@ -15,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
+	"rsagent/internal/systs"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +40,8 @@ const (
 	StateRunning          State = "Running"
 	StateStopped          State = "Stopped" // 已有状态但节点未运行
 	StateError            State = "Error"
+	StateNotInstalled     State = "NotInstalled" // system 后端：系统未安装 tailscale
+	StateNotRunning       State = "NotRunning"   // system 后端：已安装但 tailscaled 未运行
 )
 
 // Config 是节点参数，来自配置文件。
@@ -47,26 +52,30 @@ type Config struct {
 	UDPPort         uint16
 	AdvertiseRoutes []string
 	Tags            []string // 申请的 tag，每次启动都通过 AdvertiseTags 带上
+	Backend         string   // embedded | system
+	Socket          string   // system 后端的 LocalAPI socket
 }
 
 // Snapshot 是某一时刻的节点状态，可直接序列化给界面。
 type Snapshot struct {
-	State         State      `json:"state"`
-	Hostname      string     `json:"hostname"`
-	ControlURL    string     `json:"controlURL"`
-	HasState      bool       `json:"hasState"`
-	IP            string     `json:"ip,omitempty"`
-	IPv6          string     `json:"ipv6,omitempty"`
-	DNSName       string     `json:"dnsName,omitempty"`
-	Tailnet       string     `json:"tailnet,omitempty"`
-	LoginName     string     `json:"loginName,omitempty"`
-	Tags          []string   `json:"tags,omitempty"`
-	KeyExpiry     *time.Time `json:"keyExpiry,omitempty"`
-	AdvertiseTags []string   `json:"advertiseTags,omitempty"` // 配置中申请的 tag
-	HomeRelay     string     `json:"homeRelay,omitempty"`     // 当前首选 DERP 区域代码
-	AuthURL       string     `json:"authURL,omitempty"`       // 控制服务器要求交互式认证时给出的链接
-	Message       string     `json:"message,omitempty"`       // 最近一次错误或提示
-	Since         time.Time  `json:"since"`                   // 进入当前状态的时间
+	State         State       `json:"state"`
+	Hostname      string      `json:"hostname"`
+	ControlURL    string      `json:"controlURL"`
+	HasState      bool        `json:"hasState"`
+	IP            string      `json:"ip,omitempty"`
+	IPv6          string      `json:"ipv6,omitempty"`
+	DNSName       string      `json:"dnsName,omitempty"`
+	Tailnet       string      `json:"tailnet,omitempty"`
+	LoginName     string      `json:"loginName,omitempty"`
+	Tags          []string    `json:"tags,omitempty"`
+	KeyExpiry     *time.Time  `json:"keyExpiry,omitempty"`
+	AdvertiseTags []string    `json:"advertiseTags,omitempty"` // 配置中申请的 tag
+	HomeRelay     string      `json:"homeRelay,omitempty"`     // 当前首选 DERP 区域代码
+	AuthURL       string      `json:"authURL,omitempty"`       // 控制服务器要求交互式认证时给出的链接
+	Message       string      `json:"message,omitempty"`       // 最近一次错误或提示
+	Since         time.Time   `json:"since"`                   // 进入当前状态的时间
+	Backend       string      `json:"backend"`                 // embedded | system
+	System        *systs.Info `json:"system,omitempty"`        // system 后端：系统 tailscale 的检测结果
 }
 
 // Peer 是 tailnet 中一个对端的摘要，用于诊断直连还是中转。
@@ -111,12 +120,25 @@ type Node struct {
 	snap   Snapshot
 	msg    i18n.Text // 最近一次错误或提示，渲染快照时按当前语言翻译
 	cancel context.CancelFunc
+
+	// system 后端
+	sys        systs.Info
+	sysCancel  context.CancelFunc
+	sysDone    chan struct{}
+	sysPoke    chan struct{}
+	attached   bool // 已调用 OnStarted
+	attachedIP string
+	sysLns     map[*trackedListener]struct{}
 }
 
 // New 创建节点对象，不启动。
 func New(cfg Config, log *slog.Logger, hooks Hooks) *Node {
-	n := &Node{cfg: cfg, log: log, hooks: hooks}
+	n := &Node{cfg: cfg, log: log, hooks: hooks, sysPoke: make(chan struct{}, 1)}
+	if cfg.Backend != BackendSystem {
+		n.cfg.Backend = BackendEmbedded
+	}
 	n.snap = Snapshot{
+		Backend:       n.cfg.Backend,
 		State:         StateNotConfigured,
 		Hostname:      cfg.Hostname,
 		ControlURL:    cfg.ControlURL,
@@ -126,6 +148,10 @@ func New(cfg Config, log *slog.Logger, hooks Hooks) *Node {
 	}
 	if n.snap.HasState {
 		n.snap.State = StateStopped
+	}
+	if n.System() {
+		// 节点名由系统 tailscaled 决定（通常是路由器的主机名），连上后从状态里读取
+		n.snap.Hostname = ""
 	}
 	return n
 }
@@ -141,7 +167,7 @@ func (n *Node) Config() Config {
 func (n *Node) UpdateConfig(hostname, controlURL string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.srv != nil {
+	if n.srv != nil && !n.System() {
 		return i18n.New("节点运行中，先停止再修改")
 	}
 	if hostname != "" {
@@ -157,7 +183,7 @@ func (n *Node) UpdateConfig(hostname, controlURL string) error {
 func (n *Node) SetTags(tags []string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.srv != nil {
+	if n.srv != nil && !n.System() {
 		return i18n.New("节点运行中，tag 需在登录时指定")
 	}
 	n.cfg.Tags = append([]string(nil), tags...)
@@ -168,17 +194,24 @@ func (n *Node) SetTags(tags []string) error {
 // SetAdvertiseRoutesConfig 更新配置中的子网路由，运行中则立即生效。
 func (n *Node) SetAdvertiseRoutesConfig(ctx context.Context, routes []string) error {
 	n.mu.Lock()
+	old := n.cfg.AdvertiseRoutes
 	n.cfg.AdvertiseRoutes = append([]string(nil), routes...)
 	lc := n.lc
 	n.mu.Unlock()
 	if lc == nil {
 		return nil
 	}
+	if n.System() {
+		return mergeRoutes(ctx, lc, old, routes)
+	}
 	return applyRoutes(ctx, lc, routes)
 }
 
-// HasState 判断是否有持久化的节点状态。
+// HasState 判断是否有持久化的节点状态。system 后端的状态由 tailscaled 自己保存，视为总是有。
 func (n *Node) HasState() bool {
+	if n.System() {
+		return true
+	}
 	_, err := os.Stat(filepath.Join(n.cfg.StateDir, "tailscaled.state"))
 	return err == nil
 }
@@ -190,6 +223,10 @@ func (n *Node) Snapshot() Snapshot {
 	s := n.snap
 	s.Message = i18n.String(n.msg)
 	s.HasState = n.HasState()
+	if n.System() {
+		info := n.sys
+		s.System = &info
+	}
 	return s
 }
 
@@ -209,6 +246,9 @@ func (n *Node) Running() bool {
 // 节点已在运行但处于 NeedsLogin、NeedsMachineAuth 或 Error，且给了 authKey 时，
 // 先停止再用 key 重新登录，保留节点身份。
 func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
+	if n.System() {
+		return n.sysStart(ctx, authKey, tags)
+	}
 	n.mu.Lock()
 	if n.srv != nil {
 		st := n.snap.State
@@ -298,6 +338,9 @@ func (n *Node) failStart(srv *tsnet.Server, err error) {
 
 // Stop 停止节点但保留持久化状态，下次 Start 不需要 auth key。
 func (n *Node) Stop() error {
+	if n.System() {
+		return n.sysStop()
+	}
 	n.mu.Lock()
 	srv := n.srv
 	cancel := n.cancel
@@ -330,6 +373,9 @@ func (n *Node) Stop() error {
 
 // Logout 退出登录并删除持久化状态，回到 NotConfigured。
 func (n *Node) Logout(ctx context.Context) error {
+	if n.System() {
+		return i18n.New("系统 Tailscale 由路由器管理，rsagent 不会退出它的登录；如需退出请在路由器上执行 tailscale logout")
+	}
 	n.mu.Lock()
 	lc := n.lc
 	n.mu.Unlock()
@@ -356,6 +402,9 @@ func (n *Node) Logout(ctx context.Context) error {
 
 // Listen 在 tailnet 地址上监听。节点未启动时返回错误。
 func (n *Node) Listen(network, addr string) (net.Listener, error) {
+	if n.System() {
+		return n.sysListen(network, addr)
+	}
 	n.mu.Lock()
 	srv := n.srv
 	n.mu.Unlock()
@@ -457,50 +506,64 @@ func (n *Node) emit() {
 	}
 }
 
-// watch 订阅 IPN 总线，把后端状态映射到 Snapshot。
+// watch 订阅 IPN 总线，把后端状态映射到 Snapshot；断开后重新订阅。用于内嵌节点。
 func (n *Node) watch(ctx context.Context, lc *local.Client) {
 	for ctx.Err() == nil {
-		w, err := lc.WatchIPNBus(ctx, ipn.NotifyInitialState)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
+		if err := n.watchBus(ctx, lc); err != nil && ctx.Err() == nil {
 			n.log.Debug(i18n.T("订阅 IPN 总线失败，重试"), "err", err)
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(time.Second):
 			}
+		}
+	}
+}
+
+// watchOnce 订阅一次，连接断开就返回。用于 system 后端：断开通常意味着 tailscaled 重启或被卸载，
+// 交给 sysLoop 重新检测。
+func (n *Node) watchOnce(ctx context.Context, lc *local.Client) {
+	if err := n.watchBus(ctx, lc); err != nil && ctx.Err() == nil {
+		n.log.Debug(i18n.T("订阅 IPN 总线失败，重试"), "err", err)
+	}
+}
+
+// watchBus 订阅 IPN 总线直到出错。订阅本身失败时返回错误，订阅后断开返回 nil。
+func (n *Node) watchBus(ctx context.Context, lc *local.Client) error {
+	w, err := lc.WatchIPNBus(ctx, ipn.NotifyInitialState)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+	for {
+		nt, err := w.Next()
+		if err != nil {
+			return nil
+		}
+		if nt.ErrMessage != nil && *nt.ErrMessage != "" {
+			n.mu.Lock()
+			n.msg = i18n.Raw(*nt.ErrMessage)
+			n.mu.Unlock()
+			n.log.Warn(i18n.T("tailscale 后端报告错误"), "msg", *nt.ErrMessage)
+			n.emit()
+		}
+		if nt.BrowseToURL != nil && *nt.BrowseToURL != "" {
+			// 控制服务器要求交互式认证：密钥过期、被撤销、tag 变化，或用户发起了浏览器登录。
+			msg := i18n.M("控制服务器要求重新认证（密钥过期、被撤销或 tag 变化）：用 auth key 重新登录，或在浏览器打开认证链接")
+			if n.System() {
+				msg = i18n.M("在浏览器打开认证链接（或扫描 QR 码）完成登录，也可以改用 auth key 登录")
+			}
+			n.mu.Lock()
+			n.snap.AuthURL = *nt.BrowseToURL
+			n.setStateLocked(StateNeedsLogin, msg)
+			n.mu.Unlock()
+			n.log.Warn(i18n.T("控制服务器要求重新认证"), "authURL", *nt.BrowseToURL)
+			n.emit()
 			continue
 		}
-		for {
-			nt, err := w.Next()
-			if err != nil {
-				break
-			}
-			if nt.ErrMessage != nil && *nt.ErrMessage != "" {
-				n.mu.Lock()
-				n.msg = i18n.Raw(*nt.ErrMessage)
-				n.mu.Unlock()
-				n.log.Warn(i18n.T("tailscale 后端报告错误"), "msg", *nt.ErrMessage)
-				n.emit()
-			}
-			if nt.BrowseToURL != nil && *nt.BrowseToURL != "" {
-				// 控制服务器要求交互式认证：密钥过期、被撤销或 tag 变化。auth key 无法自动续期时
-				// 只能用 key 重新登录，或由管理员在浏览器打开此链接。
-				n.mu.Lock()
-				n.snap.AuthURL = *nt.BrowseToURL
-				n.setStateLocked(StateNeedsLogin, i18n.M("控制服务器要求重新认证（密钥过期、被撤销或 tag 变化）：用 auth key 重新登录，或在浏览器打开认证链接"))
-				n.mu.Unlock()
-				n.log.Warn(i18n.T("控制服务器要求重新认证"), "authURL", *nt.BrowseToURL)
-				n.emit()
-				continue
-			}
-			if nt.State != nil {
-				n.applyState(ctx, lc, *nt.State)
-			}
+		if nt.State != nil {
+			n.applyState(ctx, lc, *nt.State)
 		}
-		_ = w.Close()
 	}
 }
 
@@ -513,6 +576,9 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	case ipn.NeedsLogin:
 		s = StateNeedsLogin
 		msg = i18n.M("控制服务器要求登录：auth key 无效、已过期或已被撤销")
+		if n.System() {
+			msg = i18n.M("系统 Tailscale 尚未登录：用 auth key 登录，或在浏览器中登录")
+		}
 	case ipn.NeedsMachineAuth:
 		s = StateNeedsMachineAuth
 		msg = i18n.M("等待管理员在 Tailscale 后台批准此设备")
@@ -529,7 +595,8 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	prev := n.snap.State
 	// Starting 期间后端会短暂经过 NeedsLogin，auth key 正常时很快离开。
 	// 只在真正停留时才切换状态，避免界面闪烁：这里延迟判断交给 up() 的超时。
-	if s == StateNeedsLogin && prev == StateStarting && n.msg == nil {
+	// system 后端没有 up() 的超时兜底，后端说需要登录就是真的需要。
+	if s == StateNeedsLogin && prev == StateStarting && n.msg == nil && !n.System() {
 		n.mu.Unlock()
 		return
 	}
@@ -547,9 +614,22 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	if s == StateRunning {
 		n.refreshSelf(ctx, lc)
 		if routes := n.Config().AdvertiseRoutes; len(routes) > 0 {
-			if err := applyRoutes(ctx, lc, routes); err != nil {
+			var err error
+			if n.System() {
+				err = mergeRoutes(ctx, lc, nil, routes)
+			} else {
+				err = applyRoutes(ctx, lc, routes)
+			}
+			if err != nil {
 				n.log.Warn(i18n.T("宣告子网路由失败"), "err", err)
 			}
+		}
+	}
+	if n.System() {
+		if s == StateRunning {
+			n.sysAttach()
+		} else {
+			n.sysDetach()
 		}
 	}
 	if prev != s {
@@ -611,6 +691,9 @@ func (n *Node) refreshSelf(ctx context.Context, lc *local.Client) {
 		}
 	}
 	if st.Self != nil {
+		if n.System() {
+			n.snap.Hostname = st.Self.HostName
+		}
 		n.snap.DNSName = strings.TrimSuffix(st.Self.DNSName, ".")
 		n.snap.KeyExpiry = st.Self.KeyExpiry
 		n.snap.HomeRelay = st.Self.Relay

@@ -11,6 +11,7 @@ import (
 	"rsagent/internal/bridge"
 	"rsagent/internal/buildinfo"
 	"rsagent/internal/logging"
+	"rsagent/internal/platform"
 	"rsagent/internal/tsnode"
 )
 
@@ -33,6 +34,10 @@ func (s *Server) routes() {
 	api.HandleFunc("PUT /api/tailscale/routes", s.handleTailscaleRoutesPut)
 	api.HandleFunc("POST /api/tailscale/ping", s.handleTailscalePing)
 	api.HandleFunc("GET /api/tailscale/netcheck", s.handleTailscaleNetcheck)
+	api.HandleFunc("POST /api/tailscale/login-interactive", s.handleTailscaleLoginInteractive)
+	api.HandleFunc("PUT /api/tailscale/backend", s.handleTailscaleBackend)
+	api.HandleFunc("POST /api/tailscale/system/{action}", s.handleSystemAction)
+	api.HandleFunc("GET /api/tailscale/system/job", s.handleSystemJob)
 
 	api.HandleFunc("POST /api/bridges/{id}/capture/start", s.handleCaptureStart)
 	api.HandleFunc("POST /api/bridges/{id}/capture/stop", s.handleCaptureStop)
@@ -69,6 +74,8 @@ type StatusResponse struct {
 	Version       string           `json:"version"`
 	Commit        string           `json:"commit"`
 	Mode          string           `json:"mode"`
+	Platform      string           `json:"platform"`                  // windows | darwin | linux | openwrt
+	PlatformVer   string           `json:"platformVersion,omitempty"` // OpenWrt 版本
 	UptimeSec     int64            `json:"uptimeSec"`
 	DataDir       string           `json:"dataDir"`
 	Listen        string           `json:"listen"`
@@ -96,6 +103,8 @@ func (s *Server) buildStatus(r *http.Request) StatusResponse {
 		Version:       buildinfo.Version,
 		Commit:        buildinfo.Commit,
 		Mode:          s.deps.Mode,
+		Platform:      platform.Name(),
+		PlatformVer:   platform.OpenWrtRelease(),
 		UptimeSec:     int64(time.Since(s.deps.StartedAt).Seconds()),
 		DataDir:       s.deps.Paths.DataDir,
 		Listen:        s.deps.Config.Listen,

@@ -14,6 +14,7 @@ import (
 	"rsagent/internal/buildinfo"
 	"rsagent/internal/config"
 	"rsagent/internal/logging"
+	"rsagent/internal/platform"
 	"rsagent/internal/tsnode"
 	"rsagent/internal/update"
 	"rsagent/internal/web"
@@ -31,6 +32,20 @@ type Options struct {
 	Handoff    func() // 部署页安装服务成功后调用，让本进程的 core 退位给服务
 	Restart    func() // 应用更新后重启本进程；空表示不支持
 	Quit       func() // 本机 POST /api/ui/quit 时退出本进程
+}
+
+// nodeConfig 由配置得到 Tailscale 节点参数。
+func nodeConfig(cfg *config.Config, paths config.Paths) tsnode.Config {
+	return tsnode.Config{
+		StateDir:        paths.StateDir,
+		Hostname:        cfg.Tailscale.Hostname,
+		ControlURL:      cfg.Tailscale.ControlURL,
+		UDPPort:         uint16(cfg.Tailscale.UDPPort),
+		AdvertiseRoutes: cfg.Tailscale.AdvertiseRoutes,
+		Tags:            cfg.Tailscale.Tags,
+		Backend:         cfg.Tailscale.EffectiveBackend(),
+		Socket:          cfg.Tailscale.Socket(),
+	}
 }
 
 // Run 运行 core，阻塞到 ctx 取消。
@@ -65,7 +80,8 @@ func Run(ctx context.Context, o Options) error {
 	}
 	defer lg.Close()
 
-	lg.Info(i18n.T("rsagent 启动"), "version", buildinfo.Version, "commit", buildinfo.Commit, "dataDir", paths.DataDir)
+	lg.Info(i18n.T("rsagent 启动"), "version", buildinfo.Version, "commit", buildinfo.Commit, "dataDir", paths.DataDir,
+		"platform", platform.Name(), "tailscale", cfg.Tailscale.EffectiveBackend())
 	if created {
 		lg.Info(i18n.T("已生成默认配置"), "file", paths.ConfigFile)
 	}
@@ -88,14 +104,7 @@ func Run(ctx context.Context, o Options) error {
 		return id.Node
 	}, hub.Notify)
 
-	node = tsnode.New(tsnode.Config{
-		StateDir:        paths.StateDir,
-		Hostname:        cfg.Tailscale.Hostname,
-		ControlURL:      cfg.Tailscale.ControlURL,
-		UDPPort:         uint16(cfg.Tailscale.UDPPort),
-		AdvertiseRoutes: cfg.Tailscale.AdvertiseRoutes,
-		Tags:            cfg.Tailscale.Tags,
-	}, lg.Logger.With("mod", "tsnode"), tsnode.Hooks{
+	node = tsnode.New(nodeConfig(cfg, paths), lg.Logger.With("mod", "tsnode"), tsnode.Hooks{
 		OnStarted: func(n *tsnode.Node) {
 			addr := fmt.Sprintf(":%d", cfg.Tailscale.WebPort)
 			ln, err := n.Listen("tcp", addr)

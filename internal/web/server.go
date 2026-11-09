@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"rsagent/internal/i18n"
+	"sync"
 	"time"
 
 	"rsagent/internal/bridge"
@@ -66,6 +67,9 @@ type Server struct {
 	deps Deps
 	mux  *http.ServeMux
 	hub  *Hub
+
+	sysMu  sync.Mutex
+	sysJob *sysJob // 最近一次系统 tailscale 操作
 }
 
 // New 构造 Server 并注册路由。
