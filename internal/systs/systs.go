@@ -156,24 +156,9 @@ func Install(ctx context.Context, out io.Writer) error {
 	if free := freeMB(installRoot()); free > 0 && free < needMB {
 		return i18n.Errorf("剩余空间不足：%s 只剩 %d MB，安装 tailscale 约需 %d MB", installRoot(), free, needMB)
 	}
-	step(out, i18n.T("更新套件列表"))
-	var err error
-	if mgr == "apk" {
-		err = Runner(ctx, out, "apk", "update")
-	} else {
-		err = Runner(ctx, out, "opkg", "update")
-	}
-	if err != nil {
-		return i18n.Errorf("更新套件列表失败（请检查路由器能否连网）: %w", err)
-	}
-	step(out, i18n.T("安装 tailscale"))
-	if mgr == "apk" {
-		err = Runner(ctx, out, "apk", "add", "tailscale")
-	} else {
-		err = Runner(ctx, out, "opkg", "install", "tailscale")
-	}
-	if err != nil {
-		return i18n.Errorf("安装 tailscale 失败: %w", err)
+	updateLists(ctx, out, mgr)
+	if err := installPackage(ctx, out, mgr, "tailscale"); err != nil {
+		return err
 	}
 	// 部分厂商固件的 tailscale 套件不带服务脚本，一并安装提供它的套件
 	if _, err := os.Stat(initScript); err != nil {
@@ -187,13 +172,35 @@ func Install(ctx context.Context, out io.Writer) error {
 	return EnsureFirewall(ctx, out)
 }
 
-func installPackage(ctx context.Context, out io.Writer, mgr, name string) error {
-	step(out, i18n.Sprintf("安装 %s", name))
+// updateLists 更新套件列表。部分套件源失败（如厂商源的签名不受信任、某些源不存在）时只给出警告：
+// 其余的源仍然可用，是否装得上由后面的安装决定。
+func updateLists(ctx context.Context, out io.Writer, mgr string) {
+	step(out, i18n.T("更新套件列表"))
 	var err error
 	if mgr == "apk" {
-		err = Runner(ctx, out, "apk", "add", name)
+		err = Runner(ctx, out, "apk", "update")
 	} else {
-		err = Runner(ctx, out, "opkg", "install", name)
+		err = Runner(ctx, out, "opkg", "update")
+	}
+	if err != nil {
+		step(out, i18n.T("部分套件源更新失败，继续安装（请确认路由器能连网）"))
+	}
+}
+
+func installPackage(ctx context.Context, out io.Writer, mgr, name string) error {
+	step(out, i18n.Sprintf("安装 %s", name))
+	if mgr != "apk" {
+		if err := Runner(ctx, out, "opkg", "install", name); err != nil {
+			return i18n.Errorf("安装 %s 失败: %w", name, err)
+		}
+		return nil
+	}
+	var buf strings.Builder
+	err := Runner(ctx, io.MultiWriter(out, &buf), "apk", "add", name)
+	// 部分厂商固件（如 Photonicat 一代）的套件源签名不受信任：与安装脚本一样改用 --allow-untrusted
+	if err != nil && strings.Contains(strings.ToUpper(buf.String()), "UNTRUSTED") {
+		step(out, i18n.T("套件源的签名不受信任（固件缺少厂商的签名密钥），改用 --allow-untrusted 安装"))
+		err = Runner(ctx, out, "apk", "add", "--allow-untrusted", name)
 	}
 	if err != nil {
 		return i18n.Errorf("安装 %s 失败: %w", name, err)
@@ -210,16 +217,7 @@ func InstallService(ctx context.Context, out io.Writer) error {
 	if mgr == "" {
 		return i18n.New("找不到套件管理器（opkg 或 apk）")
 	}
-	step(out, i18n.T("更新套件列表"))
-	var err error
-	if mgr == "apk" {
-		err = Runner(ctx, out, "apk", "update")
-	} else {
-		err = Runner(ctx, out, "opkg", "update")
-	}
-	if err != nil {
-		return i18n.Errorf("更新套件列表失败（请检查路由器能否连网）: %w", err)
-	}
+	updateLists(ctx, out, mgr)
 	if err := installPackage(ctx, out, mgr, ServicePackage); err != nil {
 		return err
 	}

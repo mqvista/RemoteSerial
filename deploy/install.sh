@@ -170,11 +170,14 @@ install_packages() {
     # 以前直接安装文件时的服务先停掉，文件交给套件
     [ -x /etc/init.d/rsagent ] && /etc/init.d/rsagent stop >/dev/null 2>&1 || true
     if [ "$PM" = opkg ]; then
-        opkg update >/dev/null || die "opkg update failed; check the router's internet connection"
+        # 部分套件源失败（不存在、暂时连不上）时其余的源仍可用，是否装得上由下面的安装决定
+        opkg update >/dev/null 2>&1 || say "warning: some package feeds could not be updated; continuing"
         # shellcheck disable=SC2086
         opkg install $LOCAL || die "opkg install failed"
     else
-        apk update >/dev/null || die "apk update failed; check the router's internet connection"
+        # 厂商固件的源可能签名不受信任（如 Photonicat 一代）或部分不存在：只警告。下面的 --allow-untrusted
+        # 同样作用于这些源的索引，依赖仍能装上
+        apk update >/dev/null 2>&1 || say "warning: some package feeds could not be updated (for example an unsigned vendor feed); continuing"
         # shellcheck disable=SC2086
         # tailscale 明确加入 world：之后移除 rsagent 时不会把路由器的 Tailscale 一起移除
         apk add --allow-untrusted tailscale $LOCAL || die "apk add failed"
