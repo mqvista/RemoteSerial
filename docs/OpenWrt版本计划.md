@@ -2,7 +2,7 @@
 
 - 文档版本：v0.2，2026-11-09
 - v0.2 变更：LuCI 可修改控制台端口（3.4、4.1）；新增系统 Tailscale 未安装/未运行/未登录时的检测与引导（3.5）。
-- 状态：阶段 1、2 已实现并在 24.10 / 25.12 容器中测试（待实机验证），阶段 3 未开始
+- 状态：阶段 1–3 已实现并在 24.10 / 25.12 容器中测试（待实机验证）
 - 目标硬件：x86_64 软路由、RK3568（aarch64）
 - 目标系统：OpenWrt 24.10（opkg / `.ipk`）与 OpenWrt 25.x（apk v3 / `.apk`）
 
@@ -203,6 +203,10 @@ rsagent ctl tailscale-install # 安装并启动系统 tailscale，逐行输出�
 **luci-app-rsagent**（架构无关 `all` / `noarch`），依赖 `rsagent`、`luci-base`。
 
 ### 5.2 构建
+
+> **实际做法（v0.3）**：程序是预编译的，不需要 SDK 的交叉编译，因此改用 `tools/owpkg`：`.ipk` 由工具直接生成（与 ipkg-build 相同的 tar.gz 结构），`.apk` 用 Alpine 3.23 容器里的 `apk mkpkg` 生成（与 OpenWrt 25.x 同为 apk-tools v3）。`make openwrt-pkg VERSION=…`，产物与其他发布文件一起放在 `dist/`。下面是原计划，保留作参考。
+>
+> 依赖：`tailscale`、`kmod-usb-serial`、`kmod-usb-acm` 与 `kmod-usb-serial-ch341/-cp210x/-ftdi/-pl2303`（驱动很小，直接作为依赖）。升级：rsagent 的套件不在官方源中，`opkg/apk upgrade` 找不到新版，改为再次执行 `install.sh`（它在 OpenWrt 上下载套件并交给套件管理器安装）。
 
 - 仓库新增 `openwrt/rsagent/Makefile` 与 `openwrt/luci-app-rsagent/Makefile`：使用预编译程序，不在 SDK 里编译 Go。
 - 用官方 SDK Docker 镜像在本机（macOS 上需 Docker）构建：

@@ -103,15 +103,16 @@ func PackageInstalled(name string) string {
 	return ""
 }
 
-// UpgradeCommand 返回用套件管理器升级 name 的命令。
+// InstallScriptURL 是一键安装脚本。在 OpenWrt 上它会用 .ipk / .apk 安装，已用套件安装时再执行一次即升级。
+const InstallScriptURL = "https://raw.githubusercontent.com/mqvista/RemoteSerial/main/deploy/install.sh"
+
+// UpgradeCommand 返回升级 rsagent 套件的命令。rsagent 的套件不在 OpenWrt 官方源里，opkg / apk upgrade 找不到新版，
+// 所以改为再次执行安装脚本：它从 GitHub Releases 下载对应的新套件，交给套件管理器安装。
 func UpgradeCommand(mgr, name string) string {
-	switch mgr {
-	case "apk":
-		return "apk update && apk upgrade " + name
-	case "opkg":
-		return "opkg update && opkg upgrade " + name
+	if mgr == "" || name != "rsagent" {
+		return ""
 	}
-	return ""
+	return "wget -qO- " + InstallScriptURL + " | sh"
 }
 
 // OverrideForTest 强制 OpenWrt 判断结果，返回恢复函数。只用于测试。

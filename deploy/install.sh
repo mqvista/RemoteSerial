@@ -6,13 +6,17 @@
 #
 # OpenWrt（以 root 登录，没有 curl 时用 wget）：
 #   wget -qO- https://raw.githubusercontent.com/mqvista/RemoteSerial/main/deploy/install.sh | sh
-#   wget -qO- .../install.sh | sh -s -- --with-tailscale
 #   离线：把 rsagent-openwrt-<arch>.tar.gz 解压后执行 sh rsagent-openwrt/install.sh
 #
+# OpenWrt 在线安装默认使用套件（24.10 为 .ipk，25.x 为 .apk）：tailscale 与常见 USB 串口驱动随依赖自动安装，
+# 之后可用 opkg / apk 移除；再次执行本脚本即升级到最新版。架构没有对应套件时（或离线包、--no-package）
+# 改为直接安装文件。
+#
 # 参数（OpenWrt）：
-#   --with-tailscale   系统没有 tailscale 时直接安装，不询问
-#   --no-tailscale     不安装系统 tailscale，改用 rsagent 内置的 Tailscale
+#   --with-tailscale   系统没有 tailscale 时直接安装，不询问（直接安装文件时）
+#   --no-tailscale     不安装系统 tailscale，改用 rsagent 内置的 Tailscale（直接安装文件）
 #   --no-luci          不安装 LuCI 页面（服务 → RemoteSerial）
+#   --no-package       不用套件，直接安装文件
 #
 # 环境变量：
 #   RSAGENT_VERSION    指定版本（如 0.6.0），默认最新
@@ -34,11 +38,13 @@ die() { say "error: $*" >&2; exit 1; }
 
 TAILSCALE=${RSAGENT_TAILSCALE:-ask}
 LUCI=yes
+PACKAGE=yes
 for a in "$@"; do
     case "$a" in
         --with-tailscale) TAILSCALE=yes ;;
         --no-tailscale) TAILSCALE=no ;;
         --no-luci) LUCI=no ;;
+        --no-package) PACKAGE=no ;;
         *) die "unknown option $a" ;;
     esac
 done
@@ -80,10 +86,7 @@ if [ -z "${RSAGENT_FROM_FILE:-}" ] && [ -n "$HERE" ] && [ -f "$HERE/rsagent" ] &
 fi
 
 BASE=""
-if [ -n "${RSAGENT_FROM_FILE:-}" ]; then
-    say "Using local file $RSAGENT_FROM_FILE"
-    cp "$RSAGENT_FROM_FILE" "$TMP/rsagent"
-else
+if [ -z "${RSAGENT_FROM_FILE:-}" ]; then
     if [ -n "${RSAGENT_BASE_URL:-}" ]; then
         BASE=${RSAGENT_BASE_URL%/}
     elif [ -n "${RSAGENT_VERSION:-}" ]; then
@@ -91,14 +94,105 @@ else
     else
         BASE="https://github.com/$REPO/releases/latest/download"
     fi
+fi
+
+# verify <file> <name>：按发布的 SHA256SUMS 校验（取不到校验和时跳过）
+SUMS=""
+verify() {
+    if [ -z "$SUMS" ]; then
+        SUMS=none
+        fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" 2>/dev/null && SUMS="$TMP/SHA256SUMS"
+    fi
+    [ "$SUMS" = none ] && return 0
+    want=$(grep " $2\$" "$SUMS" | awk '{print $1}')
+    got=$(sha256sum "$1" | awk '{print $1}')
+    [ -n "$want" ] && [ "$want" != "$got" ] && die "SHA-256 mismatch for $2"
+    [ -n "$want" ] && say "SHA-256 verified: $2"
+    return 0
+}
+
+# ---------------------------------------------------------------- OpenWrt 套件
+# 下载并安装 .ipk / .apk。返回 1 表示这台路由器不适用套件（架构不符、找不到套件），改为直接安装文件。
+install_packages() {
+    if [ -d /lib/apk/db ] && command -v apk >/dev/null 2>&1; then
+        PM=apk
+    elif command -v opkg >/dev/null 2>&1; then
+        PM=opkg
+    else
+        return 1
+    fi
+    case "$ARCH" in amd64) PA=x86_64 ;; arm64) PA=aarch64_generic ;; esac
+    if [ "$PM" = opkg ]; then
+        opkg print-architecture | grep -q " $PA " || { say "No package for this router's architecture; installing files instead"; return 1; }
+    else
+        # OpenWrt 的套件架构写在 /etc/apk/arch（如 aarch64_generic），apk --print-arch 只给出 aarch64
+        PARCHES=$(cat /etc/apk/arch 2>/dev/null || apk --print-arch)
+        printf '%s\n' $PARCHES | grep -qx "$PA" || { say "No package for architecture $PARCHES; installing files instead"; return 1; }
+    fi
+    if [ -n "${RSAGENT_VERSION:-}" ]; then
+        V=${RSAGENT_VERSION#v}
+    else
+        fetch "$BASE/manifest.json" "$TMP/manifest.json" 2>/dev/null || return 1
+        V=$(jsonfilter -i "$TMP/manifest.json" -e '@.version' 2>/dev/null || true)
+    fi
+    case "$V" in ''|*-*) return 1 ;; esac
+    if [ "$PM" = opkg ]; then
+        FILES="rsagent_${V}-r1_${PA}.ipk"
+        LUCIPKG="luci-app-rsagent_${V}-r1_all.ipk"
+    else
+        FILES="rsagent-${V}-r1_${PA}.apk"
+        LUCIPKG="luci-app-rsagent-${V}-r1_all.apk"
+    fi
+    [ "$LUCI" = yes ] && [ -d /www/luci-static ] && FILES="$FILES $LUCIPKG"
+    LOCAL=""
+    for f in $FILES; do
+        say "Downloading $BASE/$f"
+        fetch "$BASE/$f" "$TMP/$f" 2>/dev/null || { say "Package $f not found; installing files instead"; return 1; }
+        verify "$TMP/$f" "$f"
+        LOCAL="$LOCAL $TMP/$f"
+    done
+    say "Installing rsagent $V with $PM (dependencies: tailscale, USB serial drivers)"
+    # 以前直接安装文件时的服务先停掉，文件交给套件
+    [ -x /etc/init.d/rsagent ] && /etc/init.d/rsagent stop >/dev/null 2>&1 || true
+    if [ "$PM" = opkg ]; then
+        opkg update >/dev/null || die "opkg update failed; check the router's internet connection"
+        # shellcheck disable=SC2086
+        opkg install $LOCAL || die "opkg install failed"
+    else
+        apk update >/dev/null || die "apk update failed; check the router's internet connection"
+        # shellcheck disable=SC2086
+        # tailscale 明确加入 world：之后移除 rsagent 时不会把路由器的 Tailscale 一起移除
+        apk add --allow-untrusted tailscale $LOCAL || die "apk add failed"
+    fi
+    return 0
+}
+
+if [ "$OPENWRT" = 1 ] && [ -z "${RSAGENT_FROM_FILE:-}" ] && [ "$PACKAGE" = yes ] && [ "$TAILSCALE" != no ] && install_packages; then
+    say "Installed $("$BIN" version)"
+    if [ -n "${RSAGENT_AUTH_KEY:-}" ]; then
+        say "Joining the tailnet..."
+        i=0
+        until "$BIN" ctl status 2>/dev/null | grep -q '"running": *true' || [ $i -ge 15 ]; do sleep 1; i=$((i + 1)); done
+        printf '%s\n' "$RSAGENT_AUTH_KEY" | "$BIN" ctl tailscale-authkey --tags "${RSAGENT_TAGS:-tag:serial-agent}" >/dev/null \
+            || say "warning: joining the tailnet failed; log in from LuCI or the console"
+    fi
+    say "Service started: /etc/init.d/rsagent (logs in /tmp/rsagent/logs)"
+    if [ -d /www/luci-static ] && [ "$LUCI" = yes ]; then
+        say "Console: open it from LuCI (Services -> RemoteSerial), or http://<tailscale IP>:7890/ from the tailnet"
+    else
+        say "Console: http://<tailscale IP>:7890/ from the tailnet, or over SSH: ssh -L 7890:127.0.0.1:7890 root@<router>"
+    fi
+    say "Upgrade: run this script again. Remove: $PM $( [ "$PM" = opkg ] && echo remove || echo del ) luci-app-rsagent rsagent"
+    exit 0
+fi
+
+if [ -n "${RSAGENT_FROM_FILE:-}" ]; then
+    say "Using local file $RSAGENT_FROM_FILE"
+    cp "$RSAGENT_FROM_FILE" "$TMP/rsagent"
+else
     say "Downloading $BASE/rsagent-linux-$ARCH"
     fetch "$BASE/rsagent-linux-$ARCH" "$TMP/rsagent"
-    if fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" 2>/dev/null; then
-        want=$(grep " rsagent-linux-$ARCH\$" "$TMP/SHA256SUMS" | awk '{print $1}')
-        got=$(sha256sum "$TMP/rsagent" | awk '{print $1}')
-        [ -n "$want" ] && [ "$want" != "$got" ] && die "SHA-256 mismatch"
-        say "SHA-256 verified"
-    fi
+    verify "$TMP/rsagent" "rsagent-linux-$ARCH"
 fi
 chmod 755 "$TMP/rsagent"
 "$TMP/rsagent" version >/dev/null || die "the downloaded program does not run on this system"
@@ -115,7 +209,7 @@ if [ "$OPENWRT" = 1 ]; then
     say "Installed $("$BIN" version)"
 
     if [ ! -x /usr/sbin/tailscaled ] && [ "$TAILSCALE" = ask ]; then
-        if [ -r /dev/tty ]; then
+        if (exec </dev/tty) 2>/dev/null; then
             printf 'The system Tailscale (tailscale package) is not installed. Install it now? [Y/n] ' > /dev/tty
             read -r ans < /dev/tty || ans=""
             case "$ans" in n|N|no|NO) TAILSCALE=no ;; *) TAILSCALE=yes ;; esac

@@ -49,14 +49,20 @@ msgstr "等待網路"
 msgid "Waiting for device"
 msgstr "等待裝置"
 
+msgid "Set up Tailscale"
+msgstr "設定 Tailscale"
+
 msgid "RemoteSerial uses the router's own Tailscale (the \"tailscale\" package), which is not installed yet."
 msgstr "RemoteSerial 使用路由器本身的 Tailscale（tailscale 套件），目前尚未安裝。"
 
-msgid "Install Tailscale"
-msgstr "安裝 Tailscale"
-
 msgid "Or run on the router:"
 msgstr "或在路由器上執行："
+
+msgid "Start the service to install it from this page."
+msgstr "啟動服務後即可在此頁安裝。"
+
+msgid "Install Tailscale"
+msgstr "安裝 Tailscale"
 
 msgid "Only %d MB free on the overlay; about %d MB is needed."
 msgstr "overlay 只剩 %d MB，大約需要 %d MB。"
@@ -81,9 +87,6 @@ msgstr "已登入，需要管理員在 Tailscale 管理後台核准這台裝置�
 
 msgid "Tailscale is not ready."
 msgstr "Tailscale 尚未就緒。"
-
-msgid "Set up Tailscale"
-msgstr "設定 Tailscale"
 
 msgid "Or log in with an auth key:"
 msgstr "或用驗證金鑰登入："

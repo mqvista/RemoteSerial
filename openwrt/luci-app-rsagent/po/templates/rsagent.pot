@@ -46,13 +46,19 @@ msgstr ""
 msgid "Waiting for device"
 msgstr ""
 
+msgid "Set up Tailscale"
+msgstr ""
+
 msgid "RemoteSerial uses the router's own Tailscale (the \"tailscale\" package), which is not installed yet."
 msgstr ""
 
-msgid "Install Tailscale"
+msgid "Or run on the router:"
 msgstr ""
 
-msgid "Or run on the router:"
+msgid "Start the service to install it from this page."
+msgstr ""
+
+msgid "Install Tailscale"
 msgstr ""
 
 msgid "Only %d MB free on the overlay; about %d MB is needed."
@@ -77,9 +83,6 @@ msgid "Logged in. An admin must approve this device in the Tailscale admin conso
 msgstr ""
 
 msgid "Tailscale is not ready."
-msgstr ""
-
-msgid "Set up Tailscale"
 msgstr ""
 
 msgid "Or log in with an auth key:"

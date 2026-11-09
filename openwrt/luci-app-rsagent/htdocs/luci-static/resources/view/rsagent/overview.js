@@ -94,11 +94,22 @@ return view.extend({
 	// ---------------------------------------------------------------- Tailscale setup
 	renderTailscale: function(st) {
 		var ts = st.status && st.status.tailscale;
+		// rsagent stopped: ctl status still reports whether the system Tailscale is installed
+		if (!st.running && st.tailscale && !st.tailscale.installed) {
+			var cmd = st.tailscale.installCommand;
+			return E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Set up Tailscale') + ' — ' + stateLabel('NotInstalled')),
+				E('p', {}, _('RemoteSerial uses the router\'s own Tailscale (the "tailscale" package), which is not installed yet.')),
+				cmd ? E('p', {}, [ _('Or run on the router:'), ' ', E('code', {}, txt(cmd)) ]) : '',
+				E('p', { 'style': 'opacity:.8' }, _('Start the service to install it from this page.'))
+			]);
+		}
 		if (!st.running || !ts || ts.state === 'Running')
 			return E('div');
 
 		var self = this, sys = ts.system || {}, body = [], buttons = [];
-		var detail = ts.message ? E('p', { 'style': 'opacity:.8' }, txt(ts.message)) : '';
+		// Not installed / not running are explained below; rsagent's own message would only repeat it
+		var detail = ts.message && ts.state !== 'NotInstalled' && ts.state !== 'NotRunning' ? E('p', { 'style': 'opacity:.8' }, txt(ts.message)) : '';
 
 		switch (ts.state) {
 		case 'NotInstalled':

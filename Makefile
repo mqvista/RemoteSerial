@@ -7,7 +7,7 @@ LDFLAGS := -s -w \
 	-X rsagent/internal/buildinfo.Commit=$(COMMIT) \
 	-X rsagent/internal/buildinfo.Date=$(DATE)
 
-.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt luci luci-pot manifest run test clean
+.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt openwrt-pkg luci luci-pot manifest run test clean
 
 all: web windows linux-arm64
 
@@ -47,6 +47,13 @@ openwrt: linux-amd64 linux-arm64 luci
 		COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname root -C build/openwrt-$$a -czf dist/rsagent-openwrt-$$a.tar.gz rsagent-openwrt && \
 		rm -rf build/openwrt-$$a && echo "dist/rsagent-openwrt-$$a.tar.gz"; \
 	done
+	rm -rf build/luci
+
+# OpenWrt 套件：dist/ 下 rsagent 与 luci-app-rsagent 的 .ipk（24.10）与 .apk（25.x）。
+# 不需要 OpenWrt SDK；.apk 用 Alpine 3.23 容器里的 apk mkpkg 生成，需要 docker（make openwrt-pkg NO_APK=1 只出 .ipk）。
+openwrt-pkg: linux-amd64 linux-arm64 luci
+	rm -f dist/*.ipk dist/*.apk
+	go run ./tools/owpkg -version $(VERSION) -luci build/luci $(if $(NO_APK),-no-apk)
 	rm -rf build/luci
 
 manifest:

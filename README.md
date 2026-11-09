@@ -63,6 +63,7 @@ make darwin                          # dist/rsagent-darwin-{arm64,amd64}
 make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agent.app 及 rsagent-macos.zip，ad-hoc 签名
 make dmg VERSION=0.4.0               # 另外生成拖放安装用的 dist/rsagent-macos.dmg（zip 仍用于自更新）
 make openwrt VERSION=0.4.0           # OpenWrt 离线安装包 dist/rsagent-openwrt-{amd64,arm64}.tar.gz（含 LuCI 页面）与 dist/luci-app-rsagent.tar.gz
+make openwrt-pkg VERSION=0.4.0       # OpenWrt 套件 dist/rsagent_*.ipk、rsagent-*.apk 与 luci-app-rsagent 的 .ipk/.apk（.apk 需要 docker）
 make luci-pot                        # 修改 LuCI 页面文字后重新生成翻译模板，再补 po/zh_Hant/rsagent.po
 ```
 
@@ -79,10 +80,10 @@ V=0.5.1
 git tag -a v$V -m v$V && git push origin v$V
 rm -rf dist && make web windows linux-arm64 linux-amd64 VERSION=$V
 make deb VERSION=$V ARCH=arm64 && make deb VERSION=$V ARCH=amd64   # 需要 nfpm
-make dmg openwrt VERSION=$V
+make dmg openwrt openwrt-pkg VERSION=$V   # openwrt-pkg 需要 docker（OrbStack 即可）
 rm -f dist/rsagent-darwin-*        # 裸程序不发布，macOS 自更新走 rsagent-macos.zip
 make manifest VERSION=$V
-gh release create v$V --verify-tag --generate-notes dist/rsagent-* dist/luci-app-rsagent.tar.gz dist/*.deb dist/manifest.json dist/SHA256SUMS
+gh release create v$V --verify-tag --generate-notes dist/rsagent-* dist/rsagent_* dist/luci-app-rsagent* dist/*.deb dist/manifest.json dist/SHA256SUMS
 ```
 
 `.github/workflows/release.yml` 只能在 Actions 页面手动触发，作为备用。程序内自更新默认读取最新 Release 的 `manifest.json`，仓库需为公开，或在设置中把清单地址改为自建服务器。
@@ -130,6 +131,7 @@ internal/update    自更新：清单、下载校验、替换文件、重启
 tools/mkicon       图标生成
 tools/mkmanifest   发布清单与 SHA256SUMS 生成
 tools/luci-i18n    LuCI 翻译：提取模板、把 .po 编译成 .lmo（不需要 OpenWrt SDK）
+tools/owpkg        OpenWrt 套件：.ipk 直接生成，.apk 用 Alpine 容器里的 apk mkpkg（不需要 OpenWrt SDK）
 openwrt/           LuCI 页面 luci-app-rsagent（页面、菜单、ACL、rpcd 插件、翻译）
 installer/         Inno Setup 安装包脚本
 web/               Vue 3 + Vite 前端

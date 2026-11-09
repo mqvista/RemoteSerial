@@ -267,6 +267,10 @@ func ctlStatus(c *ctlClient) any {
 	out["running"] = err == nil
 	if err != nil {
 		out["console"] = ctlConsoleOffline(c.cfg)
+		// rsagent 停止时也检查系统 Tailscale，LuCI 照样能提示未安装
+		if c.cfg.Tailscale.EffectiveBackend() == config.BackendSystem {
+			out["tailscale"] = systs.Detect(c.cfg.Tailscale.Socket())
+		}
 		if !errors.Is(err, errAPIDown) {
 			out["error"] = err.Error()
 		}
