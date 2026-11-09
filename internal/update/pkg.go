@@ -86,9 +86,24 @@ func packageNames(mgr, version string, withLuci bool) []string {
 	return names
 }
 
-// latestPackages 从清单里找出本机需要的套件。
+// extraPackage 返回不分架构的附加套件的文件名。
+func extraPackage(mgr, version, name string) []string {
+	pv, ok := pkgVersion(version, mgr)
+	if !ok {
+		return nil
+	}
+	if mgr == "apk" {
+		return []string{fmt.Sprintf("%s-%s_all.apk", name, pv)}
+	}
+	return []string{fmt.Sprintf("%s_%s_all.ipk", name, pv)}
+}
+
+// latestPackages 从清单里找出本机需要的套件：rsagent，以及已安装的 luci-app-rsagent、rsagent-photonicat。
 func latestPackages(m *Manifest, mgr string) ([]PkgFile, error) {
 	names := packageNames(mgr, m.Version, platform.PackageInstalled("luci-app-rsagent") != "")
+	if platform.PackageInstalled("rsagent-photonicat") != "" {
+		names = append(names, extraPackage(mgr, m.Version, "rsagent-photonicat")...)
+	}
 	if len(names) == 0 {
 		return nil, i18n.Errorf("版本号 %q 无法对应套件版本", m.Version)
 	}

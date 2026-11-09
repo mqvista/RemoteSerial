@@ -30,6 +30,8 @@ type Config struct {
 	Access    Access    `json:"access"`
 	Update    Update    `json:"update"`
 	Bridges   []Bridge  `json:"bridges"`
+	// StatusFile 非空时每 2 秒把精简状态写到这个文件（JSON），供外部显示（如 Photonicat 小屏幕）读取
+	StatusFile string `json:"statusFile,omitempty"`
 }
 
 // DefaultUpdateURL 是发布清单的默认地址，指向 GitHub Releases 最新版本。
@@ -291,6 +293,9 @@ func (c *Config) Validate() error {
 		if !strings.HasPrefix(t, "tag:") || len(t) <= 4 {
 			return i18n.Errorf("tailscale.tags 含非法 tag %q，必须形如 tag:name", t)
 		}
+	}
+	if c.StatusFile != "" && !filepath.IsAbs(c.StatusFile) {
+		return i18n.Errorf("statusFile 必须是绝对路径: %q", c.StatusFile)
 	}
 	if u := c.Update.URL; u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		return i18n.Errorf("update.url 必须是 http(s) 地址: %q", u)

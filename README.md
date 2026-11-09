@@ -63,7 +63,7 @@ make darwin                          # dist/rsagent-darwin-{arm64,amd64}
 make macapp VERSION=0.4.0            # 通用二进制的 dist/RemoteSerial Agent.app 及 rsagent-macos.zip，ad-hoc 签名
 make dmg VERSION=0.4.0               # 另外生成拖放安装用的 dist/rsagent-macos.dmg（zip 仍用于自更新）
 make openwrt VERSION=0.4.0           # OpenWrt 离线安装包 dist/rsagent-openwrt-{amd64,arm64}.tar.gz（含 LuCI 页面）与 dist/luci-app-rsagent.tar.gz
-make openwrt-pkg VERSION=0.4.0       # OpenWrt 套件 dist/rsagent_*.ipk、rsagent-*.apk 与 luci-app-rsagent 的 .ipk/.apk（.apk 需要 docker）
+make openwrt-pkg VERSION=0.4.0       # OpenWrt 套件 dist/rsagent_*.ipk、rsagent-*.apk，以及 luci-app-rsagent、rsagent-photonicat 的 .ipk/.apk（.apk 需要 docker）
 make luci-pot                        # 修改 LuCI 页面文字后重新生成翻译模板，再补 po/zh_Hant/rsagent.po
 ```
 
@@ -126,6 +126,7 @@ internal/web       HTTP API、WebSocket 推送、内嵌前端
 internal/shell     托盘 + webview（Windows）
 internal/deploy    部署检测与动作：计划任务、服务（含 OpenWrt procd）、防火墙、WebView2、提权子进程、更新替换
 internal/platform  运行环境识别（OpenWrt）
+internal/photonicat Photonicat 2 小屏幕上的 RemoteSerial 页（安装 / 移除）
 internal/systs     系统自带 tailscale 的检测、安装、启动与防火墙（OpenWrt）
 internal/update    自更新：清单、下载校验、替换文件、重启
 tools/mkicon       图标生成

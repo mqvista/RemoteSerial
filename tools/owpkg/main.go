@@ -60,6 +60,25 @@ const rsagentPrerm = `#!/bin/sh
 exit 0
 `
 
+const photonicatPostinst = `#!/bin/sh
+[ -n "$IPKG_INSTROOT" ] && exit 0
+# 在 Photonicat 2 的小屏幕上加入 RemoteSerial 页（屏幕程序未运行时只给出提示，不让安装失败）
+/usr/bin/rsagent screen photonicat install || echo "rsagent-photonicat: could not add the screen page now; run: rsagent screen photonicat install"
+exit 0
+`
+
+const photonicatPrerm = `#!/bin/sh
+[ -n "$IPKG_INSTROOT" ] && exit 0
+# 升级时不移除：新版的安装后脚本会原地更新这一页，免得屏幕程序重启两次
+[ "$1" = upgrade ] && exit 0
+/usr/bin/rsagent screen photonicat remove >/dev/null 2>&1
+exit 0
+`
+
+const photonicatNote = `This package adds a RemoteSerial page to the Photonicat 2 screen.
+It is set up by "rsagent screen photonicat install" and removed by "rsagent screen photonicat remove".
+`
+
 const luciRefresh = `#!/bin/sh
 [ -n "$IPKG_INSTROOT" ] && exit 0
 rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
@@ -114,6 +133,13 @@ func main() {
 			scripts: map[string]string{"postinst": rsagentPostinst, "prerm": rsagentPrerm},
 		})
 	}
+	pkgs = append(pkgs, pkg{
+		name: "rsagent-photonicat", arch: "all", section: "utils",
+		description: "RemoteSerial status page on the Photonicat 2 screen",
+		depends:     []string{"rsagent", "pcat2-display-mini"},
+		files:       []file{{"/usr/share/rsagent/photonicat-screen", 0o644, []byte(photonicatNote)}},
+		scripts:     map[string]string{"postinst": photonicatPostinst, "prerm": photonicatPrerm},
+	})
 	luciFiles, err := readTree(*luciDir)
 	if err != nil {
 		fail(fmt.Errorf("%w (run make luci first)", err))

@@ -7,7 +7,7 @@ LDFLAGS := -s -w \
 	-X rsagent/internal/buildinfo.Commit=$(COMMIT) \
 	-X rsagent/internal/buildinfo.Date=$(DATE)
 
-.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt openwrt-pkg luci luci-pot manifest run test clean
+.PHONY: all web windows linux-arm64 linux-amd64 darwin darwin-arm64 darwin-amd64 macapp dmg deb openwrt openwrt-pkg router luci luci-pot manifest run test clean
 
 all: web windows linux-arm64
 
@@ -53,6 +53,11 @@ openwrt: linux-amd64 linux-arm64 luci
 openwrt-pkg: linux-amd64 linux-arm64 luci
 	rm -f dist/*.ipk dist/*.apk
 	go run ./tools/owpkg -version $(VERSION) -luci build/luci $(if $(NO_APK),-no-apk)
+
+# 开发用：编译测试套件，传到路由器并安装：make router ROUTER=root@192.168.100.1
+router:
+	@test -n "$(ROUTER)" || { echo "usage: make router ROUTER=root@<router>"; exit 2; }
+	sh tools/router-update.sh $(ROUTER)
 
 manifest:
 	go run ./tools/mkmanifest -version $(VERSION) -dir dist -base $(BASE_URL)

@@ -175,6 +175,21 @@ msgstr ""
 msgid "Console"
 msgstr ""
 
+msgid "The RemoteSerial page is on the screen"
+msgstr ""
+
+msgid "Remove"
+msgstr ""
+
+msgid "Not shown"
+msgstr ""
+
+msgid "Show on the screen"
+msgstr ""
+
+msgid "Photonicat screen"
+msgstr ""
+
 msgid "Status"
 msgstr ""
 
@@ -242,6 +257,12 @@ msgid "Up to date"
 msgstr ""
 
 msgid "Update RemoteSerial to %s? rsagent restarts during the update; bridges reconnect afterwards."
+msgstr ""
+
+msgid "Added. Press the screen button to reach the RemoteSerial page."
+msgstr ""
+
+msgid "Removed the RemoteSerial page from the screen."
 msgstr ""
 
 msgid "Start the service to open the console."

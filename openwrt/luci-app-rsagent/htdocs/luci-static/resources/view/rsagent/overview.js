@@ -23,6 +23,7 @@ var callBridgeAdd = rpc.declare({ object: 'luci.rsagent', method: 'bridge_add', 
 var callBridgeRemove = rpc.declare({ object: 'luci.rsagent', method: 'bridge_remove', params: [ 'id' ] });
 var callUpdate = rpc.declare({ object: 'luci.rsagent', method: 'update' });
 var callUpdateCheck = rpc.declare({ object: 'luci.rsagent', method: 'update_check' });
+var callScreen = rpc.declare({ object: 'luci.rsagent', method: 'screen', params: [ 'action' ] });
 
 var BAUDS = [ 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 ];
 
@@ -305,6 +306,15 @@ return view.extend({
 			row(_('Tailscale'), E('div', {}, tsText)),
 			row(_('Console'), E('div', {}, this.renderOpen(st)))
 		];
+		// Photonicat 2: RemoteSerial page on the built-in screen
+		if (st.photonicat && st.photonicat.display) {
+			var pc = st.photonicat.installed
+				? [ E('span', { 'style': 'color:#4caf50' }, _('The RemoteSerial page is on the screen')), ' ',
+					E('button', { 'class': 'cbi-button cbi-button-remove', 'click': ui.createHandlerFn(this, 'screen', 'remove') }, _('Remove')) ]
+				: [ E('span', { 'style': 'opacity:.8' }, _('Not shown')), ' ',
+					E('button', { 'class': 'cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'screen', 'install') }, _('Show on the screen')) ];
+			rows.push(row(_('Photonicat screen'), E('div', {}, pc)));
+		}
 		if (st.error)
 			rows.push(row(_('Error'), st.error));
 
@@ -405,6 +415,16 @@ return view.extend({
 		return callUpdate().then(checked).then(function() {
 			return new Promise(function(resolve) { window.setTimeout(resolve, 1000); });
 		}).then(function() { return self.refresh(); }).catch(notifyError);
+	},
+
+	screen: function(action) {
+		var self = this;
+		return callScreen(action).then(checked).then(function() {
+			ui.addNotification(null, E('p', {}, action === 'install'
+				? _('Added. Press the screen button to reach the RemoteSerial page.')
+				: _('Removed the RemoteSerial page from the screen.')), 'info');
+			return self.refresh();
+		}).catch(notifyError);
 	},
 
 	checkUpdate: function() {

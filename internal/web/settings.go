@@ -21,7 +21,8 @@ type settingsUpdate struct {
 	Tags          *[]string `json:"tags"`
 	UpdateURL     *string   `json:"updateURL"`
 	UpdateAuto    *bool     `json:"updateAutoCheck"`
-	Language      *string   `json:"language"` // en | zh-TW | ""（跟随系统）
+	Language      *string   `json:"language"`   // en | zh-TW | ""（跟随系统）
+	StatusFile    *string   `json:"statusFile"` // 状态文件路径，"" 表示不写
 }
 
 type settingsResponse struct {
@@ -122,6 +123,9 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if u.Language != nil {
 		cfg.Language = strings.TrimSpace(*u.Language)
 	}
+	if u.StatusFile != nil {
+		cfg.StatusFile = strings.TrimSpace(*u.StatusFile)
+	}
 
 	if err := cfg.Validate(); err != nil {
 		*cfg = backup
@@ -145,6 +149,9 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if u.Language != nil {
 		i18n.SetLang(i18n.Resolve(cfg.Language))
 		resp.Applied = append(resp.Applied, "language")
+	}
+	if u.StatusFile != nil {
+		resp.Applied = append(resp.Applied, "statusFile")
 	}
 	if updateChanged {
 		if s.deps.Updater != nil {

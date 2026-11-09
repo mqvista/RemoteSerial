@@ -146,6 +146,8 @@ func Run(ctx context.Context, o Options) error {
 		Console:     con,
 	})
 	con.srv = srv
+	go statusFileLoop(ctx, cfg, node, bridges, lg.Logger.Warn)
+	go devWatchLoop(ctx, lg.Logger.With("mod", "devwatch"))
 
 	if node.HasState() {
 		lg.Info(i18n.T("发现已保存的节点状态，自动上线"))

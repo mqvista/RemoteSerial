@@ -23,6 +23,7 @@ list)
 	"tailscale_job": {},
 	"tailscale_login": {},
 	"update": {},
+	"screen": { "action": "str" },
 	"update_check": {},
 	"tailscale_authkey": { "authKey": "str", "tags": "str" }
 }
@@ -80,6 +81,11 @@ call)
 		;;
 	tailscale_job) "$BIN" ctl tailscale-job ;;
 	update) "$BIN" ctl update ;;
+	screen)
+		a=$(arg action)
+		case "$a" in install|remove) ;; *) fail "invalid action" ;; esac
+		"$BIN" ctl screen "$a"
+		;;
 	update_check) "$BIN" ctl update-check ;;
 	tailscale_login) "$BIN" ctl tailscale-login ;;
 	tailscale_authkey)

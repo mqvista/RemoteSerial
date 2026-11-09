@@ -178,6 +178,21 @@ msgstr "Tailscale"
 msgid "Console"
 msgstr "管理介面"
 
+msgid "The RemoteSerial page is on the screen"
+msgstr "小螢幕上已顯示 RemoteSerial 頁"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Not shown"
+msgstr "未顯示"
+
+msgid "Show on the screen"
+msgstr "在小螢幕顯示"
+
+msgid "Photonicat screen"
+msgstr "Photonicat 小螢幕"
+
 msgid "Status"
 msgstr "狀態"
 
@@ -246,6 +261,12 @@ msgstr "已是最新版本"
 
 msgid "Update RemoteSerial to %s? rsagent restarts during the update; bridges reconnect afterwards."
 msgstr "把 RemoteSerial 更新到 %s？更新時 rsagent 會重新啟動，橋接之後會自動重新連線。"
+
+msgid "Added. Press the screen button to reach the RemoteSerial page."
+msgstr "已加入。按小螢幕旁的按鍵翻頁，就能看到 RemoteSerial 頁。"
+
+msgid "Removed the RemoteSerial page from the screen."
+msgstr "已從小螢幕移除 RemoteSerial 頁。"
 
 msgid "Start the service to open the console."
 msgstr "啟動服務後才能開啟管理介面。"

@@ -155,6 +155,10 @@ install_packages() {
         LUCIPKG="luci-app-rsagent-${V}-r1_all.apk"
     fi
     [ "$LUCI" = yes ] && [ -d /www/luci-static ] && FILES="$FILES $LUCIPKG"
+    # Photonicat 2：机身小屏幕上的 RemoteSerial 页
+    if [ -x /etc/init.d/pcat2-display-mini ]; then
+        if [ "$PM" = opkg ]; then FILES="$FILES rsagent-photonicat_${V}-r1_all.ipk"; else FILES="$FILES rsagent-photonicat-${V}-r1_all.apk"; fi
+    fi
     LOCAL=""
     for f in $FILES; do
         say "Downloading $BASE/$f"

@@ -1,0 +1,177 @@
+{
+ "config_version": 103,
+ "show_sms": true,
+ "display_template": {
+  "elements": {
+   "page0": [
+    {
+     "type": "text",
+     "label": "WAN Up",
+     "position": {
+      "x": 10,
+      "y": 5
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "WanUP"
+    },
+    {
+     "type": "text",
+     "label": "WAN Down",
+     "position": {
+      "x": 10,
+      "y": 29
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "WanDOWN"
+    }
+   ],
+   "page1": [
+    {
+     "type": "text",
+     "label": "Ping",
+     "position": {
+      "x": 10,
+      "y": 5
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "Ping0"
+    },
+    {
+     "type": "text",
+     "label": "LAN IP",
+     "position": {
+      "x": 10,
+      "y": 29
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "LAN_IP"
+    }
+   ],
+   "page2": [
+    {
+     "type": "text",
+     "label": "CPU",
+     "position": {
+      "x": 10,
+      "y": 5
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "CpuUsages"
+    },
+    {
+     "type": "text",
+     "label": "Uptime",
+     "position": {
+      "x": 10,
+      "y": 29
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "Uptime"
+    }
+   ],
+   "page3": [
+    {
+     "type": "fixed_text",
+     "label": "WAN:",
+     "position": {
+      "x": 10,
+      "y": 5
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1
+    },
+    {
+     "type": "text",
+     "label": "WAN Mode",
+     "position": {
+      "x": 59,
+      "y": 5
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "NetworkModeLabel"
+    }
+   ],
+   "page4": [
+    {
+     "type": "text",
+     "label": "Speed",
+     "position": {
+      "x": 10,
+      "y": 5
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "GpsSpeed"
+    },
+    {
+     "type": "text",
+     "label": "Sats",
+     "position": {
+      "x": 10,
+      "y": 29
+     },
+     "font": "unit",
+     "color": [
+      255,
+      229,
+      255
+     ],
+     "enable": 1,
+     "data_key": "GpsSats"
+    }
+   ]
+  }
+ }
+}

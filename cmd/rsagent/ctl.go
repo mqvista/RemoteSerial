@@ -23,6 +23,7 @@ import (
 
 	"rsagent/internal/config"
 	"rsagent/internal/deploy"
+	"rsagent/internal/photonicat"
 	"rsagent/internal/platform"
 	"rsagent/internal/systs"
 )
@@ -40,6 +41,7 @@ const ctlUsage = `usage: rsagent ctl <op> [args] [--data-dir dir]
   tailscale install|start|firewall|service   start a system Tailscale job; see tailscale-job
   tailscale-job                   progress of the last job
   tailscale-login                 start a browser login; the result has authURL
+  screen install|remove           RemoteSerial page on the Photonicat 2 screen
   lang <code>                     use LuCI's current language when rsagent follows the system language
   update                          one-click update of a package install: check, download, install
   update-check                    check for a new version
@@ -226,6 +228,23 @@ func runCtl(args []string) (any, error) {
 			return nil, fmt.Errorf("unknown tailscale action %q", rest[0])
 		}
 		return c.call("POST", "/api/tailscale/system/"+rest[0], nil)
+	case "screen":
+		if len(rest) != 1 || (rest[0] != "install" && rest[0] != "remove") {
+			return nil, errors.New("usage: rsagent ctl screen install|remove")
+		}
+		var log bytes.Buffer
+		var err error
+		if rest[0] == "install" {
+			if err = photonicat.Install(&log); err == nil {
+				err = setStatusFile(paths, photonicat.StatusFile)
+			}
+		} else if err = photonicat.Remove(&log); err == nil {
+			err = setStatusFile(paths, "")
+		}
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "log": log.String(), "screen": photonicat.Status()}, nil
 	case "lang":
 		if len(rest) != 1 {
 			return nil, errors.New("usage: rsagent ctl lang <code>, e.g. zh-tw or en")
@@ -274,6 +293,9 @@ func ctlStatus(c *ctlClient) any {
 	out := map[string]any{"platform": platform.Name()}
 	if platform.OpenWrt() {
 		out["service"] = deploy.OpenWrtServiceStatus()
+		if photonicat.Available() {
+			out["photonicat"] = photonicat.Status()
+		}
 	}
 	st, err := c.call("GET", "/api/status", nil)
 	out["running"] = err == nil

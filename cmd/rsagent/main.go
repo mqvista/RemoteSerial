@@ -84,6 +84,8 @@ func main() {
 		err = cmdTailscale(args[1:])
 	case "ctl":
 		cmdCtl(args[1:])
+	case "screen":
+		err = cmdScreen(args[1:])
 	case "update":
 		err = cmdUpdate(args[1:])
 	case "quit":
@@ -116,6 +118,7 @@ Usage:
                                     Join the tailnet unattended; the key may also come from RSAGENT_AUTH_KEY
   rsagent tailscale <op> [options]  op: status | install | start | firewall | backend <embedded|system>
                                     Manage the system Tailscale (OpenWrt's tailscale package) used by rsagent
+  rsagent screen photonicat <op>    op: install | remove | status  RemoteSerial page on the Photonicat 2 screen
   rsagent ctl <op> [args]           JSON interface for LuCI: status | service | bridge | console | token |
                                     password | tailscale | tailscale-job | tailscale-login (run "rsagent ctl")
   rsagent update [options]          [--check] [--url manifest-url]  Check for, download and apply updates
