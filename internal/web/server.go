@@ -64,6 +64,8 @@ type Deps struct {
 	Mode        string // standalone | service | shell
 	// Console 在运行中切换本机管理界面的端口与局域网访问；空表示不支持（需重启生效）。
 	Console ConsoleControl
+	// Proxy 套用前置代理设置；空表示只保存、重启后生效。
+	Proxy ProxyControl
 }
 
 // ConsoleControl 由 app 实现：按新的配置重新监听本机与 tailnet 侧管理界面，失败时保持原样。

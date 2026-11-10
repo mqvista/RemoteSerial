@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -141,7 +142,20 @@ func (m multiHandler) Enabled(ctx context.Context, l slog.Level) bool {
 	return false
 }
 
+// scrubber 在写入前改写日志消息，用于去掉第三方库日志里的密码（见 SetScrubber）。
+var scrubber atomic.Pointer[func(string) string]
+
+// SetScrubber 设置日志消息的改写函数。
+func SetScrubber(f func(string) string) { scrubber.Store(&f) }
+
 func (m multiHandler) Handle(ctx context.Context, rec slog.Record) error {
+	if f := scrubber.Load(); f != nil {
+		if msg := (*f)(rec.Message); msg != rec.Message {
+			r := slog.NewRecord(rec.Time, rec.Level, msg, rec.PC)
+			rec.Attrs(func(a slog.Attr) bool { r.AddAttrs(a); return true })
+			rec = r
+		}
+	}
 	var first error
 	for _, h := range m.hs {
 		if !h.Enabled(ctx, rec.Level) {

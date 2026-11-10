@@ -45,7 +45,9 @@ const ctlUsage = `usage: rsagent ctl <op> [args] [--data-dir dir]
   lang <code>                     use LuCI's current language when rsagent follows the system language
   update                          one-click update of a package install: check, download, install
   update-check                    check for a new version
-  tailscale-authkey [--tags tag:a,tag:b]   log in with an auth key or OAuth client secret read from stdin`
+  tailscale-authkey [--tags tag:a,tag:b]   log in with an auth key or OAuth client secret read from stdin
+  proxy [--set]                   show the proxy settings, or set them from a JSON object on stdin:
+                                  {"url":"http://host:port","update":true,"tailscale":false}`
 
 type ctlClient struct {
 	cfg  *config.Config
@@ -136,6 +138,7 @@ func runCtl(args []string) (any, error) {
 	port := fs.Int("port", 0, "")
 	lan := fs.String("lan", "", "")
 	clear := fs.Bool("clear", false, "")
+	_ = fs.Bool("set", false, "") // proxy --set
 	tags := fs.String("tags", "", "")
 	device := fs.String("device", "", "")
 	name := fs.String("name", "", "")
@@ -258,6 +261,26 @@ func runCtl(args []string) (any, error) {
 		return c.call("GET", "/api/tailscale/system/job", nil)
 	case "tailscale-login":
 		return c.call("POST", "/api/tailscale/login-interactive", nil)
+	case "proxy":
+		set := false
+		for _, f := range flags {
+			if f == "--set" || f == "-set" {
+				set = true
+			}
+		}
+		if !set {
+			return c.call("GET", "/api/proxy", nil)
+		}
+		// 地址里可能有密码，从标准输入读，不出现在命令行参数（ps 可见）里
+		var body struct {
+			URL       string `json:"url"`
+			Update    bool   `json:"update"`
+			Tailscale bool   `json:"tailscale"`
+		}
+		if err := json.NewDecoder(io.LimitReader(os.Stdin, 16<<10)).Decode(&body); err != nil {
+			return nil, fmt.Errorf("write the proxy settings to stdin as JSON: %v", err)
+		}
+		return c.call("PUT", "/api/proxy", body)
 	case "tailscale-authkey":
 		// key 从标准输入读，不出现在命令行参数（ps 可见）里
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')

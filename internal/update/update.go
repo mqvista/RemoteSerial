@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
+	"rsagent/internal/netproxy"
 	"rsagent/internal/platform"
 	"runtime"
 	"strconv"
@@ -131,7 +132,7 @@ func New(o Options) *Updater {
 	u := &Updater{
 		dir:    Dir(o.DataDir),
 		log:    o.Log,
-		client: &http.Client{Timeout: 0, Transport: &http.Transport{ResponseHeaderTimeout: 30 * time.Second, Proxy: http.ProxyFromEnvironment}},
+		client: &http.Client{Timeout: 0, Transport: &http.Transport{ResponseHeaderTimeout: 30 * time.Second, Proxy: netproxy.ForUpdate}},
 		notify: o.OnChange,
 		st: Status{
 			Current:   o.Current,

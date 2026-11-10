@@ -25,7 +25,9 @@ list)
 	"update": {},
 	"screen": { "action": "str" },
 	"update_check": {},
-	"tailscale_authkey": { "authKey": "str", "tags": "str" }
+	"tailscale_authkey": { "authKey": "str", "tags": "str" },
+	"proxy": {},
+	"proxy_set": { "url": "str", "update": false, "tailscale": false }
 }
 JSON
 	;;
@@ -93,6 +95,11 @@ call)
 		key=$(arg authKey); tags=$(arg tags)
 		[ -n "$key" ] || fail "missing auth key"
 		printf '%s\n' "$key" | "$BIN" ctl tailscale-authkey --tags "$tags"
+		;;
+	proxy) "$BIN" ctl proxy ;;
+	proxy_set)
+		# the address may contain a password: pass it on stdin, never on a command line
+		printf '%s\n' "$INPUT" | "$BIN" ctl proxy --set
 		;;
 	*) fail "unknown method" ;;
 	esac

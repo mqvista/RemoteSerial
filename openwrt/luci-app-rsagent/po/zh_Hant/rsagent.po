@@ -408,3 +408,51 @@ msgstr "儲存"
 
 msgid "Serial-to-TCP bridges over Tailscale. This page covers the basics; use the console for editing bridges, the terminal, captures and logs."
 msgstr "透過 Tailscale 把序列埠橋接成 TCP。這裡提供基本操作；編輯橋接、終端機、錄製與日誌請到管理介面。"
+
+msgid "Proxy"
+msgstr "代理伺服器"
+
+msgid "For networks that need a proxy to download updates or to reach Tailscale."
+msgstr "供需要經代理才能下載更新或連上 Tailscale 的網路使用。"
+
+msgid "http://host:port or socks5://host:port"
+msgstr "http://主機:連接埠 或 socks5://主機:連接埠"
+
+msgid "opkg and apk support HTTP proxies only. Updates are downloaded through the SOCKS5 proxy, but installing Tailscale or drivers will connect directly."
+msgstr "opkg 與 apk 只支援 HTTP 代理。更新會經 SOCKS5 代理下載，但安裝 Tailscale 或驅動程式時會直接連線。"
+
+msgid "Could not set the proxy for the system tailscale:"
+msgstr "無法設定系統 tailscale 的代理："
+
+msgid "The system tailscale uses the proxy"
+msgstr "系統 tailscale 已使用代理"
+
+msgid "Proxy address"
+msgstr "代理位址"
+
+msgid "HTTP or SOCKS5. To log in, add a user name and password: http://user:password@host:port"
+msgstr "支援 HTTP 與 SOCKS5。需要登入時加上帳號密碼：http://帳號:密碼@主機:連接埠"
+
+msgid "Use for updates"
+msgstr "更新時使用"
+
+msgid "Checking and downloading updates, and installing packages"
+msgstr "檢查與下載更新、安裝套件"
+
+msgid "Use for Tailscale"
+msgstr "Tailscale 使用"
+
+msgid "Connections to the coordination server and relay servers. Direct connections between devices use UDP and cannot go through a proxy, so traffic goes through relays and latency is higher."
+msgstr "連線協調伺服器與中繼伺服器。裝置之間的直接連線使用 UDP，無法經過代理，會改走中繼，延遲較高。"
+
+msgid "Adds the proxy to /etc/init.d/tailscale and restarts tailscale. If a tailscale package upgrade overwrites the script, rsagent adds it back within 2 minutes."
+msgstr "會在 /etc/init.d/tailscale 加入代理設定並重新啟動 tailscale。tailscale 套件升級覆蓋該檔後，rsagent 會在 2 分鐘內補回。"
+
+msgid "Tailscale reconnects after saving."
+msgstr "儲存後 Tailscale 會重新連線。"
+
+msgid "Enter a proxy address first"
+msgstr "請先填寫代理位址"
+
+msgid "Proxy settings saved"
+msgstr "代理設定已儲存"

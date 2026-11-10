@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"rsagent/internal/i18n"
+	"rsagent/internal/netproxy"
 	"strings"
 )
 
@@ -162,6 +163,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	resp.RestartRequired = len(resp.Pending) > 0
 	shown := *cfg
 	shown.Access.PasswordHash = ""
+	shown.Proxy.URL = netproxy.Redact(shown.Proxy.URL)
 	resp.Config = &shown
 	s.deps.Log.Info(i18n.T("设置已更新"), "applied", resp.Applied, "pending", resp.Pending, "by", requesterLabel(r))
 	s.hub.Notify()

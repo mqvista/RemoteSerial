@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"rsagent/internal/i18n"
+	"rsagent/internal/netproxy"
 	"strconv"
 	"time"
 
@@ -22,6 +23,8 @@ func (s *Server) routes() {
 	api.HandleFunc("GET /api/logs", s.handleLogs)
 	api.HandleFunc("GET /api/settings", s.handleSettingsGet)
 	api.HandleFunc("PUT /api/settings", s.handleSettingsPut)
+	api.HandleFunc("GET /api/proxy", s.handleProxyGet)
+	api.HandleFunc("PUT /api/proxy", s.handleProxyPut)
 	api.HandleFunc("POST /api/language/follow", s.handleLanguageFollow)
 	api.HandleFunc("GET /api/network/interfaces", s.handleInterfaces)
 
@@ -224,6 +227,7 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, _ *http.Request) {
 	// 配置里只有局域网密码的哈希算敏感项，去掉后整体返回。auth key 不落盘。
 	c := *s.deps.Config
 	c.Access.PasswordHash = ""
+	c.Proxy.URL = netproxy.Redact(c.Proxy.URL)
 	writeJSON(w, http.StatusOK, &c)
 }
 

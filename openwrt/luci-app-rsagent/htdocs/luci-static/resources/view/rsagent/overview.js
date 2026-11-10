@@ -24,6 +24,8 @@ var callBridgeRemove = rpc.declare({ object: 'luci.rsagent', method: 'bridge_rem
 var callUpdate = rpc.declare({ object: 'luci.rsagent', method: 'update' });
 var callUpdateCheck = rpc.declare({ object: 'luci.rsagent', method: 'update_check' });
 var callScreen = rpc.declare({ object: 'luci.rsagent', method: 'screen', params: [ 'action' ] });
+var callProxy = rpc.declare({ object: 'luci.rsagent', method: 'proxy' });
+var callProxySet = rpc.declare({ object: 'luci.rsagent', method: 'proxy_set', params: [ 'url', 'update', 'tailscale' ] });
 
 var BAUDS = [ 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 ];
 
@@ -670,6 +672,79 @@ return view.extend({
 		]);
 	},
 
+	// ---------------------------------------------------------------- proxy
+	loadProxy: function() {
+		var self = this;
+		return callProxy().then(function(p) {
+			dom.content(self.proxyNode, self.renderProxy(p || {}));
+			return p;
+		}).catch(function(e) {
+			dom.content(self.proxyNode, self.renderProxy({ error: String(e) }));
+		});
+	},
+
+	renderProxy: function(p) {
+		var head = [
+			E('h3', {}, _('Proxy')),
+			E('div', { 'class': 'cbi-section-descr' }, _('For networks that need a proxy to download updates or to reach Tailscale.'))
+		];
+		if (p.error) {
+			head.push(E('p', {}, txt(p.error)));
+			return E('div', { 'class': 'cbi-section' }, head);
+		}
+		var url = E('input', { 'class': 'cbi-input-text', 'autocomplete': 'off', 'value': p.url || '', 'placeholder': _('http://host:port or socks5://host:port'), 'style': 'width:100%;max-width:32em' });
+		var upd = E('input', { 'type': 'checkbox', 'checked': p.update ? '' : null });
+		var ts = E('input', { 'type': 'checkbox', 'checked': p.tailscale ? '' : null });
+		var self = this;
+		var notes = [];
+		if (p.packageHttpOnly)
+			notes.push(E('p', { 'class': 'alert-message warning' }, _('opkg and apk support HTTP proxies only. Updates are downloaded through the SOCKS5 proxy, but installing Tailscale or drivers will connect directly.')));
+		if (p.systemError)
+			notes.push(E('p', { 'class': 'alert-message error' }, [ _('Could not set the proxy for the system tailscale:') + ' ', txt(p.systemError) ]));
+		else if (p.system && p.tailscale && p.url && p.systemHooked)
+			notes.push(E('p', {}, badge(_('The system tailscale uses the proxy'), true)));
+
+		return E('div', { 'class': 'cbi-section' }, head.concat([
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Proxy address')),
+				E('div', { 'class': 'cbi-value-field' }, [ url, E('div', { 'class': 'cbi-value-description' }, _('HTTP or SOCKS5. To log in, add a user name and password: http://user:password@host:port')) ])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Use for updates')),
+				E('div', { 'class': 'cbi-value-field' }, [ upd, E('div', { 'class': 'cbi-value-description' }, _('Checking and downloading updates, and installing packages')) ])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Use for Tailscale')),
+				E('div', { 'class': 'cbi-value-field' }, [ ts, E('div', { 'class': 'cbi-value-description' }, [
+					_('Connections to the coordination server and relay servers. Direct connections between devices use UDP and cannot go through a proxy, so traffic goes through relays and latency is higher.'),
+					E('br'),
+					p.system ? _('Adds the proxy to /etc/init.d/tailscale and restarts tailscale. If a tailscale package upgrade overwrites the script, rsagent adds it back within 2 minutes.') : _('Tailscale reconnects after saving.')
+				]) ])
+			])
+		], notes, [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, ''),
+				E('div', { 'class': 'cbi-value-field' }, E('button', {
+					'class': 'cbi-button cbi-button-save',
+					'click': ui.createHandlerFn(this, function() {
+						var u = url.value.trim();
+						if ((upd.checked || ts.checked) && !u) {
+							notifyError(_('Enter a proxy address first'));
+							return;
+						}
+						return callProxySet(u, upd.checked, ts.checked).then(checked).then(function(r) {
+							ui.addNotification(null, E('p', {}, _('Proxy settings saved')), 'info');
+							dom.content(self.proxyNode, self.renderProxy(r));
+							// The system tailscale is restarted in the background; show the result when it is done
+							if (r.system)
+								window.setTimeout(function() { self.loadProxy(); }, 5000);
+						}).catch(notifyError);
+					})
+				}, _('Save')))
+			])
+		]));
+	},
+
 	// ---------------------------------------------------------------- page
 	refresh: function(withSettings) {
 		var self = this;
@@ -696,6 +771,8 @@ return view.extend({
 		this.settingsNode = E('div');
 		this.portsNode = E('div');
 		this.tailnetNode = E('div');
+		this.proxyNode = E('div');
+		this.loadProxy();
 		this.jobHead = E('p');
 		// No wrapping: the height then depends only on the line count, so "scrolled to the end" stays true when the page width changes
 		this.jobLog = E('pre', { 'style': 'max-height:240px;overflow:auto;white-space:pre;margin:0' });
@@ -720,7 +797,8 @@ return view.extend({
 			this.tailnetNode,
 			this.bridgesNode,
 			this.portsNode,
-			this.settingsNode
+			this.settingsNode,
+			this.proxyNode
 		]);
 	},
 

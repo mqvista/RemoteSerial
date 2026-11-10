@@ -277,6 +277,17 @@ export interface UpdateStatus {
   installing?: boolean
 }
 
+export interface ProxyInfo {
+  url: string // 密码显示为 ******，原样传回表示不变
+  update: boolean
+  tailscale: boolean
+  backend: string
+  system: boolean // Tailscale 代理写在系统 tailscaled 的服务脚本里（OpenWrt）
+  systemHooked: boolean
+  systemError?: string
+  packageHttpOnly: boolean
+}
+
 export interface SettingsUpdate {
   logLevel?: string
   allowedLogins?: string[]
@@ -371,6 +382,8 @@ export const api = {
   login: (password: string) => request<{ authenticated: boolean }>('/api/session/login', json('POST', { password })),
   logout: () => request<{ authenticated: boolean }>('/api/session/logout', { method: 'POST' }),
   setPassword: (password: string) => request<{ passwordSet: boolean }>('/api/session/password', json('PUT', { password })),
+  proxy: () => request<ProxyInfo>('/api/proxy'),
+  setProxy: (p: { url: string; update: boolean; tailscale: boolean }) => request<ProxyInfo>('/api/proxy', json('PUT', p)),
   consoleInfo: () => request<ConsoleInfo>('/api/console'),
   setConsole: (u: { port?: number; lan?: boolean }) => request<ConsoleInfo>('/api/console', json('PUT', u)),
   status: () => request<Status>('/api/status'),

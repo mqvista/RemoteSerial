@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"rsagent/internal/i18n"
+	"rsagent/internal/netproxy"
 	"strings"
 	"time"
 
@@ -95,6 +96,7 @@ func Provision(ctx context.Context, o ProvisionOptions) (ProvisionResult, error)
 		}
 	}
 
+	netproxy.Set(cfg.Proxy)
 	node := tsnode.New(nodeConfig(cfg, paths), o.Log.With("mod", "tsnode"), tsnode.Hooks{})
 	if err := node.Start(ctx, o.AuthKey, o.Tags); err != nil {
 		return ProvisionResult{}, err

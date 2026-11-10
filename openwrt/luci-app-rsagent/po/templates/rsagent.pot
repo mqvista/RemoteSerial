@@ -403,5 +403,53 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
+msgid "Proxy"
+msgstr ""
+
+msgid "For networks that need a proxy to download updates or to reach Tailscale."
+msgstr ""
+
+msgid "http://host:port or socks5://host:port"
+msgstr ""
+
+msgid "opkg and apk support HTTP proxies only. Updates are downloaded through the SOCKS5 proxy, but installing Tailscale or drivers will connect directly."
+msgstr ""
+
+msgid "Could not set the proxy for the system tailscale:"
+msgstr ""
+
+msgid "The system tailscale uses the proxy"
+msgstr ""
+
+msgid "Proxy address"
+msgstr ""
+
+msgid "HTTP or SOCKS5. To log in, add a user name and password: http://user:password@host:port"
+msgstr ""
+
+msgid "Use for updates"
+msgstr ""
+
+msgid "Checking and downloading updates, and installing packages"
+msgstr ""
+
+msgid "Use for Tailscale"
+msgstr ""
+
+msgid "Connections to the coordination server and relay servers. Direct connections between devices use UDP and cannot go through a proxy, so traffic goes through relays and latency is higher."
+msgstr ""
+
+msgid "Adds the proxy to /etc/init.d/tailscale and restarts tailscale. If a tailscale package upgrade overwrites the script, rsagent adds it back within 2 minutes."
+msgstr ""
+
+msgid "Tailscale reconnects after saving."
+msgstr ""
+
+msgid "Enter a proxy address first"
+msgstr ""
+
+msgid "Proxy settings saved"
+msgstr ""
+
 msgid "Serial-to-TCP bridges over Tailscale. This page covers the basics; use the console for editing bridges, the terminal, captures and logs."
 msgstr ""

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"rsagent/internal/i18n"
@@ -30,6 +31,7 @@ type Config struct {
 	Access    Access    `json:"access"`
 	Update    Update    `json:"update"`
 	Bridges   []Bridge  `json:"bridges"`
+	Proxy     Proxy     `json:"proxy"`
 	// StatusFile 非空时每 2 秒把精简状态写到这个文件（JSON），供外部显示（如 Photonicat 小屏幕）读取
 	StatusFile string `json:"statusFile,omitempty"`
 }
@@ -41,6 +43,35 @@ const DefaultUpdateURL = "https://github.com/mqvista/RemoteSerial/releases/lates
 type Update struct {
 	URL       string `json:"url"`       // 发布清单地址，私有仓库或内网可改为自建地址
 	AutoCheck bool   `json:"autoCheck"` // 启动后和每天自动检查一次，只提示不自动安装
+}
+
+// Proxy 是前置代理：部分网络要经代理才能检查更新、连上 Tailscale。
+type Proxy struct {
+	URL       string `json:"url,omitempty"`       // http://[用户:密码@]主机:端口，或 socks5://…
+	Update    bool   `json:"update,omitempty"`    // 检查与下载更新、安装套件时使用
+	Tailscale bool   `json:"tailscale,omitempty"` // Tailscale 连接控制服务器与中继服务器时使用
+}
+
+// ParseProxyURL 解析代理地址，只接受 http、https、socks5、socks5h。
+func ParseProxyURL(s string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil {
+		return nil, i18n.Errorf("代理地址格式错误: %w", err)
+	}
+	switch u.Scheme {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return nil, i18n.Errorf("代理地址必须以 http://、https:// 或 socks5:// 开头: %q", s)
+	}
+	if u.Hostname() == "" {
+		return nil, i18n.Errorf("代理地址缺少主机: %q", s)
+	}
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return nil, i18n.Errorf("代理端口非法: %q", p)
+		}
+	}
+	return u, nil
 }
 
 // 网络后端。
@@ -296,6 +327,13 @@ func (c *Config) Validate() error {
 	}
 	if c.StatusFile != "" && !filepath.IsAbs(c.StatusFile) {
 		return i18n.Errorf("statusFile 必须是绝对路径: %q", c.StatusFile)
+	}
+	if c.Proxy.URL != "" {
+		if _, err := ParseProxyURL(c.Proxy.URL); err != nil {
+			return err
+		}
+	} else if c.Proxy.Update || c.Proxy.Tailscale {
+		return i18n.New("启用代理时必须填写代理地址")
 	}
 	if u := c.Update.URL; u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 		return i18n.Errorf("update.url 必须是 http(s) 地址: %q", u)

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"rsagent/internal/i18n"
+	"rsagent/internal/netproxy"
 	"time"
 
 	"rsagent/internal/bridge"
@@ -77,6 +78,7 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 	defer lg.Close()
+	logging.SetScrubber(netproxy.Scrub) // tshttpproxy 的日志带着完整的代理地址（含密码）
 
 	lg.Info(i18n.T("rsagent 启动"), "version", buildinfo.Version, "commit", buildinfo.Commit, "dataDir", paths.DataDir,
 		"platform", platform.Name(), "tailscale", cfg.Tailscale.EffectiveBackend())
@@ -116,6 +118,8 @@ func Run(ctx context.Context, o Options) error {
 	})
 	con.node = node
 	bridges.Apply(cfg.Bridges)
+	prx := newProxyCtl(ctx, lg.Logger.With("mod", "proxy"), node, cfg.Proxy)
+	go prx.loop()
 
 	upd := update.New(update.Options{
 		DataDir:   paths.DataDir,
@@ -144,6 +148,7 @@ func Run(ctx context.Context, o Options) error {
 		StartedAt:   time.Now(),
 		Mode:        o.Mode,
 		Console:     con,
+		Proxy:       prx,
 	})
 	con.srv = srv
 	go statusFileLoop(ctx, cfg, node, bridges, lg.Logger.Warn)

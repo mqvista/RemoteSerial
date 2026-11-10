@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { NAlert, NButton, NCard, NDynamicTags, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
 import { api } from '../api'
-import type { Config, ConsoleInfo } from '../api'
+import type { Config, ConsoleInfo, ProxyInfo } from '../api'
 import { useStatus } from '../status'
 import { t } from '../i18n'
 import type { MessageKey } from '../i18n'
@@ -96,6 +96,65 @@ async function savePassword(clear: boolean) {
     pwBusy.value = false
   }
 }
+// ---- 前置代理（立即生效）----
+const prx = ref<ProxyInfo | null>(null)
+const prxForm = ref({ url: '', update: false, tailscale: false })
+const prxBusy = ref(false)
+const prxDirty = computed(
+  () => !!prx.value && (prxForm.value.url.trim() !== prx.value.url || prxForm.value.update !== prx.value.update || prxForm.value.tailscale !== prx.value.tailscale),
+)
+// 系统 tailscaled 的服务脚本在背景修改，期间轮询结果
+const prxPending = computed(
+  () => !!prx.value && prx.value.system && !prx.value.systemError && (prx.value.tailscale && !!prx.value.url) !== prx.value.systemHooked,
+)
+let prxTimer: number | undefined
+
+async function loadProxy() {
+  try {
+    prx.value = await api.proxy()
+    prxForm.value = { url: prx.value.url, update: prx.value.update, tailscale: prx.value.tailscale }
+  } catch (e) {
+    message.error(String(e))
+  }
+}
+
+async function pollProxy(n: number) {
+  window.clearTimeout(prxTimer)
+  if (n <= 0) return
+  prxTimer = window.setTimeout(async () => {
+    try {
+      const r = await api.proxy()
+      if (prx.value) {
+        prx.value.systemHooked = r.systemHooked
+        prx.value.systemError = r.systemError
+      }
+      if (prxPending.value) pollProxy(n - 1)
+    } catch {
+      pollProxy(n - 1) // tailscale 重启期间经 Tailscale 网路的连线会中断
+    }
+  }, 2000)
+}
+
+async function saveProxy() {
+  const f = prxForm.value
+  if ((f.update || f.tailscale) && !f.url.trim()) {
+    message.warning(t('proxy.needUrl'))
+    return
+  }
+  prxBusy.value = true
+  try {
+    const r = await api.setProxy({ url: f.url.trim(), update: f.update, tailscale: f.tailscale })
+    prx.value = r
+    prxForm.value = { url: r.url, update: r.update, tailscale: r.tailscale }
+    message.success(t('proxy.saved'))
+    if (r.system) pollProxy(15)
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    prxBusy.value = false
+  }
+}
+
 const pendingLabels = computed(() => pending.value.map((k) => (pendingNames[k] ? t(pendingNames[k]) : k)).join(', '))
 
 const levelOptions = [
@@ -152,7 +211,9 @@ async function save() {
 onMounted(() => {
   load()
   loadConsole()
+  loadProxy()
 })
+onUnmounted(() => window.clearTimeout(prxTimer))
 </script>
 
 <template>
@@ -242,6 +303,35 @@ onMounted(() => {
           </NSpace>
         </NFormItem>
       </NForm>
+    </NCard>
+
+    <NCard v-if="prx" :title="t('proxy.title')">
+      <NForm label-placement="left" label-width="auto">
+        <NFormItem :label="t('proxy.url')">
+          <NSpace vertical style="width: 100%; max-width: 560px" :size="4">
+            <NInput v-model:value="prxForm.url" :placeholder="t('proxy.urlPh')" clearable />
+            <NText depth="3" style="font-size: 12px">{{ t('proxy.urlHint') }}</NText>
+          </NSpace>
+        </NFormItem>
+        <NFormItem :label="t('proxy.update')">
+          <NSwitch v-model:value="prxForm.update" />
+          <NText depth="3" style="margin-left: 12px; font-size: 12px">{{ t('proxy.updateHint') }}</NText>
+        </NFormItem>
+        <NFormItem :label="t('proxy.tailscale')">
+          <NSpace vertical :size="4">
+            <NSwitch v-model:value="prxForm.tailscale" />
+            <NText depth="3" style="font-size: 12px">{{ t('proxy.tailscaleHint') }}</NText>
+            <NText depth="3" style="font-size: 12px">{{ prx.system ? t('proxy.systemHint') : t('proxy.embeddedHint') }}</NText>
+          </NSpace>
+        </NFormItem>
+      </NForm>
+      <NSpace vertical :size="8" style="margin-bottom: 12px">
+        <NAlert v-if="prx.packageHttpOnly" type="warning">{{ t('proxy.packageHttpOnly') }}</NAlert>
+        <NAlert v-if="prx.systemError" type="error">{{ t('proxy.systemError', { e: prx.systemError }) }}</NAlert>
+        <NAlert v-else-if="prxPending" type="info">{{ t('proxy.systemPending') }}</NAlert>
+        <NAlert v-else-if="prx.system && prx.tailscale && prx.systemHooked" type="success">{{ t('proxy.systemOn') }}</NAlert>
+      </NSpace>
+      <NButton type="primary" :disabled="!prxDirty" :loading="prxBusy" @click="saveProxy">{{ t('common.save') }}</NButton>
     </NCard>
 
     <NCard :title="t('settings.update')">
