@@ -367,19 +367,17 @@ onUnmounted(() => {
     </NCard>
 
     <NCard v-if="canLogin" :title="t('tsp.login')">
-      <template v-if="isSystem">
-        <NSpace align="center" style="margin-bottom: 12px">
-          <NButton :loading="busy" @click="loginBrowser">{{ t('tsp.loginBrowser') }}</NButton>
-          <NText depth="3" style="font-size: 12px">{{ t('tsp.loginBrowserHint') }}</NText>
-        </NSpace>
-        <NSpace v-if="snap?.authURL" align="center" style="margin-bottom: 16px">
-          <NQrCode :value="snap.authURL" :size="140" />
-          <div>
-            <div>{{ t('tsp.scanQR') }}</div>
-            <a :href="snap.authURL" target="_blank" rel="noopener">{{ snap.authURL }}</a>
-          </div>
-        </NSpace>
-      </template>
+      <NSpace align="center" style="margin-bottom: 12px">
+        <NButton :loading="busy" @click="loginBrowser">{{ t('tsp.loginBrowser') }}</NButton>
+        <NText depth="3" style="font-size: 12px">{{ t('tsp.loginBrowserHint') }}</NText>
+      </NSpace>
+      <NSpace v-if="snap?.authURL" align="center" style="margin-bottom: 16px">
+        <NQrCode :value="snap.authURL" :size="180" :padding="8" />
+        <div>
+          <div>{{ t('tsp.scanQR') }}</div>
+          <a :href="snap.authURL" target="_blank" rel="noopener">{{ snap.authURL }}</a>
+        </div>
+      </NSpace>
       <NAlert type="info" style="margin-bottom: 12px">
         {{ t('tsp.loginHint1') }}
         {{ t('tsp.loginHint2') }}

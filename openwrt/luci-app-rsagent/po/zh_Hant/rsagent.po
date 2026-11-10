@@ -456,3 +456,9 @@ msgstr "請先填寫代理位址"
 
 msgid "Proxy settings saved"
 msgstr "代理設定已儲存"
+
+msgid "Scan to log in"
+msgstr "掃描登入"
+
+msgid "Scan with your phone to log in"
+msgstr "用手機掃描即可登入"

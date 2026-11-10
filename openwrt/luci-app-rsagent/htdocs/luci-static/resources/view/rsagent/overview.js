@@ -155,9 +155,15 @@ return view.extend({
 			// rsagent's message says the same thing, or carries the reason (e.g. an invalid key): show one of them
 			body.push(E('p', {}, txt(ts.message || _('Tailscale is running but this router is not logged in to a tailnet yet.'))));
 			detail = '';
-			if (ts.authURL)
+			if (ts.authURL) {
 				body.push(E('p', {}, [ _('Open this link to log in:'), ' ', E('a', { 'href': ts.authURL, 'target': '_blank', 'rel': 'noreferrer' }, txt(ts.authURL)) ]));
-			else
+				// The QR code is a PNG made by rsagent (ctl status), so the page needs no QR library
+				if (typeof st.authQR === 'string' && st.authQR.indexOf('data:image/png;base64,') === 0)
+					body.push(E('div', { 'style': 'margin:8px 0' }, [
+						E('img', { 'src': st.authQR, 'width': 180, 'height': 180, 'alt': _('Scan to log in'), 'style': 'image-rendering:pixelated;background:#fff;padding:6px;border-radius:4px' }),
+						E('div', { 'class': 'cbi-value-description' }, _('Scan with your phone to log in'))
+					]));
+			} else
 				body.push(E('p', {}, E('button', { 'class': 'cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'loginTailscale') }, _('Log in in browser'))));
 			body.push(this.renderAuthKey(ts));
 			break;

@@ -119,6 +119,8 @@ type Node struct {
 	lc     *local.Client
 	snap   Snapshot
 	msg    i18n.Text // 最近一次错误或提示，渲染快照时按当前语言翻译
+	// interactive 表示正在用浏览器登录（没有 auth key），等待用户打开认证链接或扫码
+	interactive bool
 	cancel context.CancelFunc
 
 	// system 后端
@@ -249,6 +251,11 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 	if n.System() {
 		return n.sysStart(ctx, authKey, tags)
 	}
+	return n.start(ctx, authKey, tags, false)
+}
+
+// start 启动内嵌节点。interactive 为真时没有 auth key 也启动，由 tsnet 发起浏览器登录。
+func (n *Node) start(ctx context.Context, authKey string, tags []string, interactive bool) error {
 	n.mu.Lock()
 	if n.srv != nil {
 		st := n.snap.State
@@ -260,7 +267,7 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 		_ = n.Stop()
 		n.mu.Lock()
 	}
-	if authKey == "" && !n.HasState() {
+	if authKey == "" && !interactive && !n.HasState() {
 		n.mu.Unlock()
 		return i18n.New("尚未登录，需要 auth key")
 	}
@@ -297,6 +304,7 @@ func (n *Node) Start(ctx context.Context, authKey string, tags []string) error {
 		srv.AdvertiseTags = append([]string(nil), tags...)
 	}
 	n.srv = srv
+	n.interactive = interactive
 	n.setStateLocked(StateStarting, nil)
 	n.mu.Unlock()
 	n.emit()
@@ -347,6 +355,7 @@ func (n *Node) Stop() error {
 	n.srv = nil
 	n.lc = nil
 	n.cancel = nil
+	n.interactive = false
 	n.mu.Unlock()
 	if srv == nil {
 		return nil
@@ -550,10 +559,10 @@ func (n *Node) watchBus(ctx context.Context, lc *local.Client) error {
 		if nt.BrowseToURL != nil && *nt.BrowseToURL != "" {
 			// 控制服务器要求交互式认证：密钥过期、被撤销、tag 变化，或用户发起了浏览器登录。
 			msg := i18n.M("控制服务器要求重新认证（密钥过期、被撤销或 tag 变化）：用 auth key 重新登录，或在浏览器打开认证链接")
-			if n.System() {
+			n.mu.Lock()
+			if n.System() || n.interactive {
 				msg = i18n.M("在浏览器打开认证链接（或扫描 QR 码）完成登录，也可以改用 auth key 登录")
 			}
-			n.mu.Lock()
 			n.snap.AuthURL = *nt.BrowseToURL
 			n.setStateLocked(StateNeedsLogin, msg)
 			n.mu.Unlock()
@@ -607,6 +616,7 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 	}
 	if s == StateRunning {
 		n.snap.AuthURL = ""
+		n.interactive = false
 	}
 	n.setStateLocked(s, msg)
 	n.mu.Unlock()
@@ -640,7 +650,13 @@ func (n *Node) applyState(ctx context.Context, lc *local.Client, st ipn.State) {
 
 // up 调用 tsnet.Up 等待上线，用于把后端错误和超时翻译成界面提示。
 func (n *Node) up(ctx context.Context, srv *tsnet.Server, lc *local.Client) {
-	uctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	timeout := 90 * time.Second
+	n.mu.Lock()
+	if n.interactive {
+		timeout = 15 * time.Minute // 等用户打开链接或扫码
+	}
+	n.mu.Unlock()
+	uctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	_, err := srv.Up(uctx)
 	if err == nil || ctx.Err() != nil {
@@ -658,6 +674,9 @@ func (n *Node) up(ctx context.Context, srv *tsnet.Server, lc *local.Client) {
 			msg = i18n.M("等待管理员在 Tailscale 后台批准此设备")
 		default:
 			msg = i18n.M("上线超时：auth key 可能无效或已过期，或无法连接控制服务器")
+			if n.interactive {
+				msg = i18n.M("浏览器登录超时：请重新点「在浏览器中登录」取得新的认证链接")
+			}
 			n.snap.State = StateNeedsLogin
 		}
 	}

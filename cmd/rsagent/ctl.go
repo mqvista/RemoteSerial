@@ -7,10 +7,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/skip2/go-qrcode"
 	"io"
 	"net"
 	"net/http"
@@ -334,6 +336,17 @@ func ctlStatus(c *ctlClient) any {
 		return out
 	}
 	out["status"] = st
+	// 登录链接的二维码（PNG data URL），LuCI 没有二维码库，直接显示这张图
+	var ts struct {
+		Tailscale struct {
+			AuthURL string `json:"authURL"`
+		} `json:"tailscale"`
+	}
+	if json.Unmarshal(st, &ts) == nil && ts.Tailscale.AuthURL != "" {
+		if q := qrDataURL(ts.Tailscale.AuthURL); q != "" {
+			out["authQR"] = q
+		}
+	}
 	if ports, err := c.call("GET", "/api/serial/ports", nil); err == nil {
 		var p struct {
 			Ports json.RawMessage `json:"ports"`
@@ -349,6 +362,15 @@ func ctlStatus(c *ctlClient) any {
 		out["update"] = upd
 	}
 	return out
+}
+
+// qrDataURL 把 s 编成二维码 PNG 的 data URL；失败返回空。
+func qrDataURL(s string) string {
+	png, err := qrcode.Encode(s, qrcode.Medium, 256)
+	if err != nil {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
 }
 
 func ctlConsoleOffline(cfg *config.Config) map[string]any {

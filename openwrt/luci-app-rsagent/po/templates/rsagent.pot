@@ -82,6 +82,12 @@ msgstr ""
 msgid "Open this link to log in:"
 msgstr ""
 
+msgid "Scan to log in"
+msgstr ""
+
+msgid "Scan with your phone to log in"
+msgstr ""
+
 msgid "Log in in browser"
 msgstr ""
 

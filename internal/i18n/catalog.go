@@ -456,4 +456,5 @@ var catalog = map[string][2]string{
 	"串口已拔出":                                       {"Serial device unplugged", "序列埠裝置已拔除"},
 	"串口不在，拒绝新连接":                                  {"Serial device not present; rejecting the new connection", "序列埠裝置不在，拒絕新連線"},
 	"串口 %s 已被桥接 %s 使用（检查两个桥接的串口与 USB 比对设置）": {"serial port %s is already used by bridge %s (check both bridges' port and USB match settings)", "序列埠 %s 已被橋接 %s 使用（請檢查兩個橋接的序列埠與 USB 比對設定）"},
+	"浏览器登录超时：请重新点「在浏览器中登录」取得新的认证链接":         {"Browser login timed out: click \"Log in with browser\" again to get a new link", "瀏覽器登入逾時：請重新點「在瀏覽器中登入」取得新的認證連結"},
 }

@@ -188,8 +188,15 @@ func (n *Node) sysLogin(ctx context.Context, lc *local.Client, authKey string, t
 func (n *Node) LoginInteractive(ctx context.Context) error {
 	n.mu.Lock()
 	lc := n.lc
+	if lc != nil && !n.System() {
+		n.interactive = true
+	}
 	n.mu.Unlock()
 	if lc == nil {
+		if !n.System() {
+			// 内嵌节点还没启动：不带 auth key 启动，tsnet 会发起浏览器登录
+			return n.start(ctx, "", nil, true)
+		}
 		return i18n.New("节点未启动")
 	}
 	if n.System() {
