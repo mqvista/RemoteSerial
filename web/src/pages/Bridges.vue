@@ -232,6 +232,8 @@ function openNew() {
     localPort: 0,
     clientPolicy: 'replace',
     idleTimeoutSec: 0,
+    disconnectOnUnplug: false,
+    openOnConnect: false,
     enabled: true,
   }
   matchByUSB.value = false
@@ -246,6 +248,22 @@ function openEdit(c: BridgeConfig) {
   editingIsNew.value = false
   showEditor.value = true
   loadPorts()
+}
+
+// 换了串口时，USB 比对跟着换成新串口的识别码（否则会一直比对最初选的那个装置）
+function onPortChange(name: string) {
+  if (!editing.value) return
+  editing.value.port = name
+  if (!matchByUSB.value) return
+  const p = ports.value.find((x) => x.name === name)
+  if (p?.isUSB) editing.value.match = { vid: p.vid ?? '', pid: p.pid ?? '', serial: p.serialNumber ?? '' }
+}
+
+// sameMatch 判断两个 USB 比对是否会比对到同一个装置
+function sameMatch(a: BridgeConfig['match'], b: BridgeConfig['match']): boolean {
+  if (!a || !b || !a.serial || !b.serial) return false
+  const up = (s: string) => s.trim().toUpperCase()
+  return up(a.vid) === up(b.vid) && up(a.pid) === up(b.pid) && a.serial.trim() === b.serial.trim()
 }
 
 function onMatchToggle(v: boolean) {
@@ -282,6 +300,11 @@ async function submitEditor() {
     return
   }
   const list = configs.value.filter((c) => c.id !== e.id)
+  const dup = list.find((c) => sameMatch(c.match, e.match))
+  if (dup) {
+    message.error(t('editor.dupMatch', { name: dup.name || dup.id }))
+    return
+  }
   list.push(e)
   list.sort((a, b) => a.tcpPort - b.tcpPort)
   if (await saveAll(list, editingIsNew.value ? t('common.added') : t('common.saved'))) showEditor.value = false
@@ -448,7 +471,7 @@ onMounted(() => {
           <NInput v-model:value="editing.name" :placeholder="t('editor.namePh')" />
         </NFormItem>
         <NFormItem :label="t('editor.port')">
-          <NSelect v-model:value="editing.port" :options="portOptions" :loading="portsLoading" filterable tag @update:show="onPortMenu" :placeholder="t('editor.portPh')" />
+          <NSelect :value="editing.port" :options="portOptions" @update:value="onPortChange" :loading="portsLoading" filterable tag @update:show="onPortMenu" :placeholder="t('editor.portPh')" />
         </NFormItem>
         <NFormItem :label="t('editor.usb')">
           <NSpace vertical :size="4">
@@ -486,6 +509,12 @@ onMounted(() => {
         </NFormItem>
         <NFormItem :label="t('editor.idle')">
           <NInputNumber v-model:value="editing.idleTimeoutSec" :min="0" :placeholder="t('editor.idlePh')" />
+        </NFormItem>
+        <NFormItem :label="t('editor.unplug')">
+          <NCheckbox v-model:checked="editing.disconnectOnUnplug">{{ t('editor.unplugHint') }}</NCheckbox>
+        </NFormItem>
+        <NFormItem :label="t('editor.onConnect')">
+          <NCheckbox v-model:checked="editing.openOnConnect">{{ t('editor.onConnectHint') }}</NCheckbox>
         </NFormItem>
         <NFormItem :label="t('editor.enabled')">
           <NCheckbox v-model:checked="editing.enabled">{{ t('editor.enabledHint') }}</NCheckbox>

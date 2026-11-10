@@ -125,6 +125,8 @@ export interface BridgeConfig {
   localPort?: number
   clientPolicy: string
   idleTimeoutSec: number
+  disconnectOnUnplug?: boolean // 设备拔出时断开客户端，设备不在时拒绝新连接
+  openOnConnect?: boolean // 有客户端连上才打开串口
   enabled: boolean
 }
 

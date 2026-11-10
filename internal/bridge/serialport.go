@@ -52,6 +52,9 @@ var knownChips = map[string]string{
 	"0D28:0204": "DAPLink CDC",
 }
 
+// listPortsFn 供 resolvePort 使用；测试时替换。
+var listPortsFn = ListPorts
+
 // ListPorts 枚举串口。usedBy 由调用方按桥接占用情况填充。
 func ListPorts() ([]PortInfo, error) {
 	details, err := enumerator.GetDetailedPortsList()
@@ -101,14 +104,15 @@ func trailingNumber(s string) int {
 }
 
 // resolvePort 根据配置找到实际串口名：优先按 USB 标识匹配，其次用配置的名字。
-func resolvePort(cfg config.Bridge) (string, error) {
+// held 报告串口是否已被其他桥接打开（可为 nil）；多个匹配时优先没被占用的。
+func resolvePort(cfg config.Bridge, held func(string) bool) (string, error) {
 	if cfg.Match == nil {
 		if cfg.Port == "" {
 			return "", i18n.Errorf("未配置串口")
 		}
 		return cfg.Port, nil
 	}
-	ports, err := ListPorts()
+	ports, err := listPortsFn()
 	if err != nil {
 		return "", i18n.Errorf("枚举串口: %w", err)
 	}
@@ -140,13 +144,22 @@ func resolvePort(cfg config.Bridge) (string, error) {
 	case 1:
 		return candidates[0], nil
 	default:
-		// 多个匹配时优先配置里记录的名字，否则取第一个。
+		// 多个匹配时优先没被其他桥接占用的；其中优先配置里记录的名字，否则取第一个。
+		free := candidates[:0:0]
 		for _, c := range candidates {
+			if held == nil || !held(c) {
+				free = append(free, c)
+			}
+		}
+		if len(free) == 0 {
+			free = candidates
+		}
+		for _, c := range free {
 			if c == cfg.Port {
 				return c, nil
 			}
 		}
-		return candidates[0], nil
+		return free[0], nil
 	}
 }
 

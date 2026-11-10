@@ -77,6 +77,9 @@ const (
 	subscriberBuffer    = 256
 )
 
+// openSerial 打开串口；测试时替换。
+var openSerial = serial.Open
+
 // Bridge 是一个串口到 TCP 的桥接实例。
 type Bridge struct {
 	cfg   config.Bridge
@@ -101,6 +104,9 @@ type Bridge struct {
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	cap          *capture
+	holder       func(port, self string) string // 返回已打开该串口的其他桥接名称，由 Manager 设置
+	wake         chan struct{}                  // 有客户端连上时通知 deviceLoop（OpenOnConnect）
+	idleClosed   bool                           // 串口是因为客户端断开而关闭的，不是被拔出（OpenOnConnect）
 
 	fromDevice atomic.Int64
 	toDevice   atomic.Int64
@@ -152,6 +158,7 @@ func newBridge(cfg config.Bridge, log *slog.Logger, whois WhoIsFunc, onChange fu
 		onChg:    onChange,
 		state:    StateDisabled,
 		tap:      newTap(),
+		wake:     make(chan struct{}, 1),
 		active:   configMode(cfg),
 		paramsBy: "config",
 		dtr:      true,
@@ -223,6 +230,9 @@ func (b *Bridge) WriteDevice(p []byte) error {
 	port := b.port
 	b.mu.Unlock()
 	if port == nil {
+		if b.cfg.OpenOnConnect {
+			return i18n.New("串口只在有客户端连接时打开")
+		}
 		return i18n.New("串口未打开")
 	}
 	n, err := port.Write(p)
@@ -327,14 +337,36 @@ func (b *Bridge) notify() {
 func (b *Bridge) deviceLoop(ctx context.Context) {
 	defer b.wg.Done()
 	for ctx.Err() == nil {
-		if err := b.openPort(); err != nil {
+		if b.cfg.OpenOnConnect && !b.hasClient() {
+			// 没有客户端：不打开串口，等客户端连上
 			b.mu.Lock()
+			changed := b.state != StateListening
+			b.lastErr = nil
+			b.setStateLocked(StateListening, nil)
+			b.mu.Unlock()
+			if changed {
+				b.notify()
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-b.wake:
+			}
+			continue
+		}
+		if err := b.openPort(); err != nil {
 			msg := i18n.ErrText(err)
 			if isNotFound(err) {
 				msg = i18n.M("串口不存在，等待设备接入")
 			} else if isBusy(err) {
 				msg = i18n.M("串口被其他程序占用")
+				if b.holder != nil {
+					if other := b.holder(b.resolvedName(), b.cfg.ID); other != "" {
+						msg = i18n.M("串口 %s 已被桥接 %s 使用（检查两个桥接的串口与 USB 比对设置）", b.resolvedName(), other)
+					}
+				}
 			}
+			b.mu.Lock()
 			changed := b.state != StateWaitingDevice || i18n.String(b.lastErr) != msg.String()
 			b.setStateLocked(StateWaitingDevice, msg)
 			b.mu.Unlock()
@@ -342,10 +374,11 @@ func (b *Bridge) deviceLoop(ctx context.Context) {
 				b.log.Warn(i18n.T("打开串口失败"), "err", err)
 				b.notify()
 			}
-			select {
-			case <-ctx.Done():
+			if b.cfg.DisconnectOnUnplug {
+				b.dropClient(i18n.T("串口无法打开"))
+			}
+			if !b.sleep(ctx) {
 				return
-			case <-time.After(deviceRetryInterval):
 			}
 			continue
 		}
@@ -367,24 +400,54 @@ func (b *Bridge) deviceLoop(ctx context.Context) {
 			return
 		}
 		b.mu.Lock()
+		idle := b.idleClosed
+		b.idleClosed = false
+		b.mu.Unlock()
+		if idle {
+			b.log.Info(i18n.T("客户端已断开，关闭串口"))
+			continue
+		}
+		b.mu.Lock()
 		b.setStateLocked(StateWaitingDevice, i18n.M("串口断开，等待重连"))
 		b.mu.Unlock()
 		b.log.Warn(i18n.T("串口断开，等待重连"))
 		b.notify()
-		select {
-		case <-ctx.Done():
+		if b.cfg.DisconnectOnUnplug {
+			b.dropClient(i18n.T("串口已拔出"))
+		}
+		if !b.sleep(ctx) {
 			return
-		case <-time.After(deviceRetryInterval):
 		}
 	}
 }
 
+// sleep 等待重试间隔；ctx 结束时返回 false。
+func (b *Bridge) sleep(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(deviceRetryInterval):
+		return true
+	}
+}
+
+func (b *Bridge) hasClient() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.client != nil
+}
+
 func (b *Bridge) openPort() error {
-	name, err := resolvePort(b.cfg)
+	var held func(string) bool
+	if b.holder != nil {
+		held = func(port string) bool { return b.holder(port, b.cfg.ID) != "" }
+	}
+	name, err := resolvePort(b.cfg, held)
 	if err != nil {
 		return err
 	}
 	b.mu.Lock()
+	b.resolved = name // 打开失败时状态也显示实际尝试的串口
 	mode := b.active
 	dtr, rts := b.dtr, b.rts
 	b.mu.Unlock()
@@ -393,13 +456,14 @@ func (b *Bridge) openPort() error {
 		return err
 	}
 	sm.InitialStatusBits = &serial.ModemOutputBits{DTR: dtr, RTS: rts}
-	p, err := serial.Open(name, sm)
+	p, err := openSerial(name, sm)
 	if err != nil {
 		return err
 	}
 	b.mu.Lock()
 	b.port = p
 	b.resolved = name
+	b.idleClosed = false
 	b.mu.Unlock()
 	return nil
 }
@@ -679,6 +743,13 @@ func (b *Bridge) acceptClient(ctx context.Context, c net.Conn, kind string) {
 	}
 
 	b.mu.Lock()
+	if b.cfg.DisconnectOnUnplug && !b.cfg.OpenOnConnect && b.port == nil {
+		b.mu.Unlock()
+		b.log.Info(i18n.T("串口不在，拒绝新连接"), "new", label)
+		_, _ = c.Write([]byte("rsagent: device not connected\r\n"))
+		_ = c.Close()
+		return
+	}
 	if b.client != nil {
 		if b.cfg.ClientPolicy == "reject" {
 			b.mu.Unlock()
@@ -719,6 +790,12 @@ func (b *Bridge) acceptClient(ctx context.Context, c net.Conn, kind string) {
 	b.mu.Unlock()
 	b.log.Info(i18n.T("客户端已连接"), "client", label, "mode", b.cfg.Mode)
 	b.notify()
+	if b.cfg.OpenOnConnect {
+		select {
+		case b.wake <- struct{}{}:
+		default:
+		}
+	}
 
 	b.wg.Add(1)
 	go func() {
@@ -803,6 +880,17 @@ func (b *Bridge) dropClientConn(c io.ReadWriteCloser, reason string) {
 	_ = c.Close()
 	b.restoreConfigMode()
 	b.log.Info(i18n.T("客户端已断开"), "client", label, "reason", reason)
+	if b.cfg.OpenOnConnect {
+		b.mu.Lock()
+		open := b.port != nil && b.client == nil
+		if open {
+			b.idleClosed = true
+		}
+		b.mu.Unlock()
+		if open {
+			b.closePort() // deviceLoop 的读取随之结束，回到等待用户端
+		}
+	}
 	b.notify()
 }
 

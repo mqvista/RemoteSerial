@@ -450,4 +450,10 @@ var catalog = map[string][2]string{
 	"重新启动 tailscale 以套用代理设置":                      {"Restarting tailscale to apply the proxy settings", "重新啟動 tailscale 以套用代理設定"},
 	"重新启动 tailscale 失败: %w":                       {"failed to restart tailscale: %w", "重新啟動 tailscale 失敗: %w"},
 	"代理设置已更新":                                     {"Proxy settings updated", "代理設定已更新"},
+	"串口只在有客户端连接时打开":                               {"the serial port is opened only while a client is connected", "序列埠只在有用戶端連線時開啟"},
+	"串口无法打开":                                      {"Cannot open the serial port", "無法開啟序列埠"},
+	"客户端已断开，关闭串口":                                 {"Client disconnected; closing the serial port", "用戶端已斷線，關閉序列埠"},
+	"串口已拔出":                                       {"Serial device unplugged", "序列埠裝置已拔除"},
+	"串口不在，拒绝新连接":                                  {"Serial device not present; rejecting the new connection", "序列埠裝置不在，拒絕新連線"},
+	"串口 %s 已被桥接 %s 使用（检查两个桥接的串口与 USB 比对设置）": {"serial port %s is already used by bridge %s (check both bridges' port and USB match settings)", "序列埠 %s 已被橋接 %s 使用（請檢查兩個橋接的序列埠與 USB 比對設定）"},
 }

@@ -100,6 +100,7 @@ func (m *Manager) Apply(cfgs []config.Bridge) {
 			toStop = append(toStop, old)
 		}
 		nb := newBridge(c, m.log, m.whois, m.onChange)
+		nb.holder = m.holderOf
 		m.bridges[c.ID] = nb
 		if c.Enabled && listen != nil {
 			toStart = append(toStart, nb)
@@ -198,6 +199,29 @@ func (m *Manager) UsedPorts() map[string]string {
 		}
 	}
 	return out
+}
+
+// holderOf 返回除 self 外已打开 port 的桥接名称，没有则返回空。
+func (m *Manager) holderOf(port, self string) string {
+	if port == "" {
+		return ""
+	}
+	m.mu.Lock()
+	list := m.allLocked()
+	m.mu.Unlock()
+	for _, b := range list {
+		if b.cfg.ID == self {
+			continue
+		}
+		st := b.Status()
+		if st.DeviceOpen && st.ResolvedPort == port {
+			if b.cfg.Name != "" {
+				return b.cfg.Name
+			}
+			return b.cfg.ID
+		}
+	}
+	return ""
 }
 
 // StopAll 停止全部桥接，进程退出时调用。

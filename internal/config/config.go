@@ -166,6 +166,10 @@ type Bridge struct {
 	ClientPolicy   string     `json:"clientPolicy"`        // reject | replace
 	IdleTimeoutSec int        `json:"idleTimeoutSec"`
 	Enabled        bool       `json:"enabled"`
+	// DisconnectOnUnplug：设备拔出时断开客户端；设备不在时拒绝新连接
+	DisconnectOnUnplug bool `json:"disconnectOnUnplug,omitempty"`
+	// OpenOnConnect：有客户端连上才打开串口，客户端断开即关闭，平时让给其他程序使用
+	OpenOnConnect bool `json:"openOnConnect,omitempty"`
 }
 
 // PortMatch 按 USB VID/PID/序列号匹配串口。
