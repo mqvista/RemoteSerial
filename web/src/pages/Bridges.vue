@@ -122,12 +122,26 @@ async function load() {
   }
 }
 
+const portsLoading = ref(false)
+
 async function loadPorts() {
+  portsLoading.value = true
   try {
     ports.value = (await api.serialPorts()).ports
+    // 新增时若还没选端口（打开对话框时列表为空），自动选第一个
+    if (editingIsNew.value && editing.value && !editing.value.port && ports.value.length) {
+      editing.value.port = ports.value[0].name
+    }
   } catch (e) {
     message.error(String(e))
+  } finally {
+    portsLoading.value = false
   }
+}
+
+// 每次展开串口下拉框都重新检测，插拔后不用关掉对话框
+function onPortMenu(show: boolean) {
+  if (show) loadPorts()
 }
 
 const portOptions = computed<SelectOption[]>(() =>
@@ -434,7 +448,7 @@ onMounted(() => {
           <NInput v-model:value="editing.name" :placeholder="t('editor.namePh')" />
         </NFormItem>
         <NFormItem :label="t('editor.port')">
-          <NSelect v-model:value="editing.port" :options="portOptions" filterable tag :placeholder="t('editor.portPh')" />
+          <NSelect v-model:value="editing.port" :options="portOptions" :loading="portsLoading" filterable tag @update:show="onPortMenu" :placeholder="t('editor.portPh')" />
         </NFormItem>
         <NFormItem :label="t('editor.usb')">
           <NSpace vertical :size="4">
