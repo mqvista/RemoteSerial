@@ -114,14 +114,15 @@ type Node struct {
 	log   *slog.Logger
 	hooks Hooks
 
-	mu     sync.Mutex
-	srv    *tsnet.Server
-	lc     *local.Client
-	snap   Snapshot
-	msg    i18n.Text // 最近一次错误或提示，渲染快照时按当前语言翻译
+	mu            sync.Mutex
+	srv           *tsnet.Server
+	lc            *local.Client
+	snap          Snapshot
+	msg           i18n.Text // 最近一次错误或提示，渲染快照时按当前语言翻译
+	routePrefixes []netip.Prefix
 	// interactive 表示正在用浏览器登录（没有 auth key），等待用户打开认证链接或扫码
 	interactive bool
-	cancel context.CancelFunc
+	cancel      context.CancelFunc
 
 	// system 后端
 	sys        systs.Info
@@ -135,7 +136,13 @@ type Node struct {
 
 // New 创建节点对象，不启动。
 func New(cfg Config, log *slog.Logger, hooks Hooks) *Node {
-	n := &Node{cfg: cfg, log: log, hooks: hooks, sysPoke: make(chan struct{}, 1)}
+	n := &Node{
+		cfg:           cfg,
+		log:           log,
+		hooks:         hooks,
+		routePrefixes: parseValidPrefixes(cfg.AdvertiseRoutes),
+		sysPoke:       make(chan struct{}, 1),
+	}
 	if cfg.Backend != BackendSystem {
 		n.cfg.Backend = BackendEmbedded
 	}
@@ -198,6 +205,7 @@ func (n *Node) SetAdvertiseRoutesConfig(ctx context.Context, routes []string) er
 	n.mu.Lock()
 	old := n.cfg.AdvertiseRoutes
 	n.cfg.AdvertiseRoutes = append([]string(nil), routes...)
+	n.routePrefixes = parseValidPrefixes(routes)
 	lc := n.lc
 	n.mu.Unlock()
 	if lc == nil {
@@ -313,6 +321,7 @@ func (n *Node) start(ctx context.Context, authKey string, tags []string, interac
 		n.failStart(srv, i18n.Errorf("tsnet 启动失败: %w", err))
 		return err
 	}
+	n.enableSubnetForwarding(srv)
 	lc, err := srv.LocalClient()
 	if err != nil {
 		n.failStart(srv, i18n.Errorf("获取本地客户端: %w", err))
